@@ -10,7 +10,8 @@ await mkdir(output, { recursive: true });
 app.setPath('userData', path.join(output, 'test-profile'));
 dialog.showSaveDialog = async (_window, options) => ({ canceled: false, filePath: path.join(output, options.filters[0].extensions[0] === 'wav' ? 'test-mix.wav' : 'test-project.lemix') });
 dialog.showMessageBoxSync = () => 1;
-const timeout = setTimeout(() => { console.error('Electron smoke test timed out'); app.exit(1); }, 60000);
+const testSeparation = process.argv.includes('--separation') || process.argv.includes('--speech');
+const timeout = setTimeout(() => { console.error('Electron smoke test timed out'); app.exit(1); }, testSeparation ? 300000 : 60000);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 app.on('browser-window-created', (_event, window) => {
@@ -26,7 +27,7 @@ app.on('browser-window-created', (_event, window) => {
     };
     const count = () => run(`document.querySelectorAll('.track-header').length`);
     const waitFor = async (expression, message) => {
-      for (let i = 0; i < 150; i++) { if (await run(expression)) return; await sleep(100); }
+      for (let i = 0; i < (testSeparation ? 2500 : 150); i++) { if (await run(expression)) return; await sleep(100); }
       throw new Error(message);
     };
     const control = async (name, value) => run(`{ const el=document.querySelector('[data-control="${name}"]'); el.value=${JSON.stringify(value)}; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }`);
@@ -123,6 +124,84 @@ app.on('browser-window-created', (_event, window) => {
       const silent = await readFile(path.join(output, 'test-mix.wav'));
       assert.ok(silent.subarray(44).every(byte => byte === 0), 'Muted tracks leaked into WAV export');
       console.log('PASS: piano notes, clip dragging, repeated loops, non-loop ending and silent muted export');
+      if (testSeparation) {
+        await click('[data-action="vocal-remover"]');
+        assert.ok(await run(`document.querySelector('.vocal-empty')?.textContent.includes('Select an imported audio track')`));
+        await click('[data-action="close-vocal"]');
+        await run(`document.querySelectorAll('.track-name')[4].click(); document.querySelectorAll('.track-header [data-mute]')[4].click()`);
+        assert.equal(await run(`document.querySelectorAll('.track-header [data-mute]')[4].getAttribute('aria-pressed')`), 'false');
+        await click('[data-action="vocal-remover"]');
+        window.showInactive(); await sleep(400);
+        await writeFile(path.join(output, 'vocal-remover.png'), (await window.webContents.capturePage()).toPNG()); window.hide();
+        await click('[data-action="start-separation"]');
+        await waitFor(`!document.body.classList.contains('busy')`, 'AI model did not finish separating audio');
+        assert.ok(await run(`!!document.querySelector('.vocal-result')`), await run(`document.querySelector('.vocal-error')?.textContent || 'Missing separation result'`));
+        await click('[data-action="save-instrumental"]');
+        await waitFor(`!document.body.classList.contains('busy')`, 'Instrumental save did not finish');
+        const instrumental = await readFile(path.join(output, 'test-mix.wav'));
+        assert.equal(instrumental.length, 44 + 44100 * 4);
+        assert.equal(instrumental.readUInt16LE(22), 2);
+        assert.ok(instrumental.subarray(44).some(byte => byte !== 0), 'AI returned a silent instrumental');
+        await click('[data-action="add-instrumental"]');
+        await waitFor(`document.querySelectorAll('.track-header').length===6 && !document.body.classList.contains('busy')`, 'Instrumental track was not added');
+        assert.equal(await run(`document.querySelectorAll('.track-header [data-mute]')[4].getAttribute('aria-pressed')`), 'true');
+        await click('[data-action="save"]'); await waitFor(`!document.body.classList.contains('busy')`, 'Stem project did not save');
+        const stemProject = JSON.parse(await readFile(path.join(output, 'test-project.lemix'), 'utf8'));
+        assert.equal(stemProject.tracks[4].audio, wave.toString('base64'));
+        assert.equal(stemProject.tracks[5].audio, instrumental.toString('base64'));
+        assert.equal(stemProject.tracks[5].reverse, true); assert.equal(stemProject.tracks[5].rate, 1.25);
+        assert.equal(stemProject.tracks[5].trim, 0.1); assert.equal(stemProject.tracks[5].offset, 0.25);
+        await click('[data-action="undo"]'); assert.equal(await count(), 5);
+        assert.equal(await run(`document.querySelectorAll('.track-header [data-mute]')[4].getAttribute('aria-pressed')`), 'false');
+        await run(`document.querySelectorAll('.track-name')[4].click()`);
+        await click('[data-action="vocal-remover"]'); await click('[data-action="start-separation"]');
+        await click('[data-action="cancel-separation"]');
+        await waitFor(`!document.body.classList.contains('busy')`, 'Canceled separation did not release the UI');
+        assert.ok(await run(`document.querySelector('.vocal-error')?.textContent.toLowerCase().includes('canceled')`));
+        assert.equal(await count(), 5);
+        assert.equal(await run(`window.lemix.removeVocals(new Uint8Array([1])).then(()=>false,()=>true)`), true);
+        const longInput = Buffer.alloc(44 + (instrumental.length - 44) * 8);
+        instrumental.copy(longInput, 0, 0, 44);
+        for (let i = 0; i < 8; i++) instrumental.copy(longInput, 44 + i * (instrumental.length - 44), 44);
+        longInput.writeUInt32LE(longInput.length - 8, 4); longInput.writeUInt32LE(longInput.length - 44, 40);
+        const canceledWorker = await run(`(async()=>{let reached=false;const off=window.lemix.onSeparationProgress(p=>{if(p.stage==='separating'&&!reached){reached=true;void window.lemix.cancelSeparation();}});try{await window.lemix.removeVocals(Uint8Array.from(atob(${JSON.stringify(longInput.toString('base64'))}),c=>c.charCodeAt(0)));return {reached,canceled:false};}catch(e){return {reached,canceled:e.message.toLowerCase().includes('canceled')};}finally{off();}})()`);
+        assert.deepEqual(canceledWorker, { reached: true, canceled: true });
+        console.log('PASS: real MDX-Net inference, instrumental WAV, preserved source/clip settings, stem undo, cancellation and input validation');
+        if (process.argv.includes('--speech')) {
+          const speechUrl = 'https://download.pytorch.org/torchaudio/tutorial-assets/Lab41-SRI-VOiCES-src-sp0307-ch127535-sg0042.wav';
+          const response = await fetch(speechUrl);
+          assert.ok(response.ok, 'Could not download the optional VOiCES speech fixture');
+          const speech = Buffer.from(await response.arrayBuffer());
+          assert.equal(speech.toString('ascii', 8, 12), 'WAVE');
+          assert.equal(speech.readUInt16LE(20), 1); assert.equal(speech.readUInt16LE(22), 1); assert.equal(speech.readUInt16LE(34), 16);
+          let dataOffset = 12;
+          while (dataOffset + 8 < speech.length && speech.toString('ascii', dataOffset, dataOffset + 4) !== 'data') dataOffset += 8 + speech.readUInt32LE(dataOffset + 4) + (speech.readUInt32LE(dataOffset + 4) % 2);
+          assert.ok(dataOffset + 8 < speech.length, 'Missing speech PCM data');
+          const sourceFrames = speech.readUInt32LE(dataOffset + 4) / 2;
+          const sourceRate = speech.readUInt32LE(24);
+          const frames = Math.round(sourceFrames * 44100 / sourceRate);
+          const stereo = Buffer.alloc(44 + frames * 4);
+          wave.copy(stereo, 0, 0, 44); stereo.writeUInt16LE(2, 22); stereo.writeUInt32LE(176400, 28); stereo.writeUInt16LE(4, 32);
+          stereo.writeUInt32LE(stereo.length - 8, 4); stereo.writeUInt32LE(stereo.length - 44, 40);
+          let inputEnergy = 0;
+          for (let i = 0; i < frames; i++) {
+            const position = i * sourceRate / 44100; const index = Math.floor(position); const fraction = position - index;
+            const a = speech.readInt16LE(dataOffset + 8 + Math.min(sourceFrames - 1, index) * 2);
+            const b = speech.readInt16LE(dataOffset + 8 + Math.min(sourceFrames - 1, index + 1) * 2);
+            const sample = Math.round(a + (b - a) * fraction);
+            stereo.writeInt16LE(sample, 44 + i * 4); stereo.writeInt16LE(sample, 46 + i * 4); inputEnergy += sample ** 2 * 2;
+          }
+          const encoded = await run(`window.lemix.removeVocals(Uint8Array.from(atob(${JSON.stringify(stereo.toString('base64'))}),c=>c.charCodeAt(0))).then(bytes=>{let s='';for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(s);})`);
+          const reduced = Buffer.from(encoded, 'base64'); assert.equal(reduced.length, stereo.length);
+          let outputEnergy = 0; for (let i = 44; i < reduced.length; i += 2) outputEnergy += reduced.readInt16LE(i) ** 2;
+          const attenuationDb = 10 * Math.log10(Math.max(1, outputEnergy) / inputEnergy);
+          assert.ok(attenuationDb < -3, `Speech was not attenuated: ${attenuationDb.toFixed(1)} dB`);
+          await writeFile(path.join(output, 'speech-input.wav'), stereo);
+          await writeFile(path.join(output, 'speech-instrumental.wav'), reduced);
+          await writeFile(path.join(output, 'speech-metrics.json'), JSON.stringify({ source: speechUrl, attribution: 'VOiCES dataset, Lab41 / SRI, CC BY 4.0', attenuationDb, durationSeconds: frames / 44100 }, null, 2));
+          console.log(`PASS: real VOiCES speech fixture attenuated by ${(-attenuationDb).toFixed(1)} dB across overlapping chunks`);
+        }
+      }
       assert.deepEqual(errors, []);
       clearTimeout(timeout); console.log('All Electron smoke checks passed. Screenshot: artifacts/studio.png'); app.exit(0);
     } catch (error) { clearTimeout(timeout); console.error(error, errors); app.exit(1); }
