@@ -26,7 +26,7 @@ npm.cmd start
 npm.cmd run dist
 ```
 
-ไฟล์จะอยู่ที่ `release/Lemix-Studio-0.5.0.exe` การแพ็กครั้งแรกอาจดาวน์โหลดเครื่องมือของ electron-builder เพิ่มเติม ยังไม่มีใบรับรองสำหรับลงลายเซ็นโปรแกรม
+ไฟล์จะอยู่ที่ `release/Lemix-Studio-0.6.0.exe` การแพ็กครั้งแรกอาจดาวน์โหลดเครื่องมือของ electron-builder เพิ่มเติม ยังไม่มีใบรับรองสำหรับลงลายเซ็นโปรแกรม
 
 ## เครื่องมือที่ใช้ได้
 
@@ -35,7 +35,7 @@ npm.cmd run dist
 - **Sound Library:** เครื่องดนตรี 9 แบบ ได้แก่ Drum machine, Analog bass, Electric keys, Ambient pad, Studio piano, Nylon guitar, Wood marimba, Drawbar organ และ Synth lead พร้อมค้นหาและเลื่อนรายการได้
 - **แต่งทำนอง:** note grid สำหรับ bass, keys และเครื่องดนตรีใหม่ทั้ง 5 แบบ โดยแสดง octave ตามเสียงที่เล่นจริง; pad สร้างคอร์ดบรรยากาศให้ แพตเทิร์นซ้ำทุกห้องและ progression เปลี่ยนทุก 2 ห้อง
 - **นำเข้าเสียง:** เลือกไฟล์หรือลาก WAV, MP3, OGG, FLAC และไฟล์เสียงที่ Chromium รองรับลงในแอป ไฟล์ละไม่เกิน 108 MB และยาวไม่เกิน 10 นาที
-- **AI Vocal Remover:** แยกเสียงร้องออกจากเพลงด้วย MDX-Net ในเครื่อง บันทึกดนตรีเป็น WAV หรือเพิ่มเป็นแทร็กใหม่เพื่อรีมิกซ์ต่อได้ พร้อม progress และ cancel
+- **AI Vocal Remover:** เลือก BS-RoFormer ViperX หรือ MDX-Net เพื่อแยกเสียงร้องออกจากเพลงไทย/อังกฤษในเครื่อง บันทึกดนตรีเป็น WAV หรือเพิ่มเป็นแทร็กใหม่เพื่อรีมิกซ์ต่อได้ พร้อม progress และ cancel
 - **Audio Repair:** ลาก Noise Reduction, Click / Pop Repair หรือ Clean Audio ลงบนคลิปเพื่อลดเสียงซ่าและซ่อมคลิก/ช็อตสั้น ๆ ปรับความแรง, Bypass เทียบต้นฉบับ และ Undo ได้ ใช้ทั้งตอนเล่นและส่งออก WAV
 - **Clip tools:** gain และ mute รายคลิป, reverse, playback speed 0.5–2× และปรับเอฟเฟกต์แยกจาก Layer mixer; การเปลี่ยน speed เปลี่ยน pitch ด้วย
 - **มิกซ์เสียง:** volume, stereo pan, mute/solo และมิกเซอร์รวมทุกแทร็ก
@@ -133,7 +133,7 @@ Smoke test แสดงหน้าต่างชั่วครู่เพื
 
 1. นำเข้าเพลง แล้วเลือกแทร็กเสียงนั้น
 2. กด **Vocal Remover** ในแถบซ้าย หรือ **Remove vocals** ใน editor
-3. กด **Remove vocals** เพื่อเริ่มทำงาน ครั้งแรกโปรแกรมจะดาวน์โหลดโมเดลประมาณ **67 MB** และตรวจ SHA-256 ก่อนใช้ ต้องมีอินเทอร์เน็ตในครั้งนี้
+3. เลือก **Separation model**: **BS-RoFormer ViperX** เป็นตัวเลือกใหม่และค่าเริ่มต้น ดาวน์โหลดประมาณ **166 MB** หรือเลือก **MDX-Net Inst HQ 3** ตัวเดิมที่ดาวน์โหลดประมาณ **67 MB** แล้วกด **Remove vocals** โปรแกรมตรวจ SHA-256 ก่อนใช้ ต้องมีอินเทอร์เน็ตเมื่อดาวน์โหลดครั้งแรกของแต่ละโมเดล
 4. รอแถบความคืบหน้า ระหว่างประมวลผลกด **Cancel separation** หรือ Escape เพื่อยกเลิกได้ โดยไม่เปลี่ยนไฟล์ต้นฉบับ
 5. เลือก **Save WAV** เพื่อบันทึกดนตรีทั้งเพลง หรือ **Add instrumental track** เพื่อเพิ่ม layer พร้อมคลิปใหม่ โปรแกรมจะ mute เฉพาะคลิปต้นฉบับที่เลือก รักษา offset, trim, ความยาว, speed, reverse, gain และเอฟเฟกต์ไว้ โดยไม่ mute คลิปอื่นใน layer เดิม ใช้ Undo กลับสู่มิกซ์ก่อนเพิ่มคลิปได้
 
@@ -141,7 +141,14 @@ Smoke test แสดงหน้าต่างชั่วครู่เพื
 
 โมเดลเก็บใน `models/` ภายใน userData ของแอป หลังดาวน์โหลดแล้วใช้งานออฟไลน์ได้ การประมวลผลอยู่ใน utility process ของ Electron ใช้ CPU และ **ไม่อัปโหลดไฟล์เพลง** ไม่ต้องติดตั้ง Python หรือมี API key รองรับ mono/stereo; เพลงยาวไม่เกิน 10 นาที การแยกอาจใช้เวลาหลายนาทีและใช้ RAM มากตามความยาวเพลง
 
-ผลลัพธ์ขึ้นอยู่กับเพลง อาจมีเสียงร้อง/คอรัสเหลือหรือเสียงดนตรีบางส่วนได้รับผลกระทบ โมเดลที่ใช้คือ [UVR MDX-Net Inst HQ 3](https://github.com/TRvlvr/model_repo/releases/tag/all_public_uvr_models) ผ่าน [ONNX Runtime](https://github.com/microsoft/onnxruntime/tree/main/js/node) โดยตั้งค่า FFT และ gain compensation ตาม [ข้อมูลโมเดลของ UVR](https://github.com/TRvlvr/application_data/blob/main/mdx_model_data/model_data.json)
+งานหนึ่งมีเวลาสูงสุด 30 นาที หากเกินจะแจ้งให้ลองไฟล์ที่สั้นลง BS-RoFormer บน CPU อาจใช้เวลานานจนถึงขีดจำกัดนี้กับเพลงยาว ควรเริ่มจากไฟล์สั้นหรือใช้ MDX-Net เมื่อต้องการผลเร็ว
+
+โมเดลทั้งสองแยกจากลักษณะเสียง จึงไม่ต้องตั้งค่าภาษา ผลลัพธ์ขึ้นอยู่กับเพลง อาจมีเสียงร้อง/คอรัสเหลือหรือเสียงดนตรีบางส่วนได้รับผลกระทบ ควรลองช่วงสั้น ๆ และฟังเปรียบเทียบ ยังไม่มีผลวัดที่ยืนยันว่าโมเดลใดดีที่สุดสำหรับเพลงไทยทุกเพลง
+
+- **BS-RoFormer ViperX ep317:** ใช้ [ONNX uint8 conversion โดย xycld](https://huggingface.co/xycld/BS-RoFormer-ONNX) ที่ตรึง revision และ SHA-256 ไว้ ลดบริบทเป็นช่วงละ 4 วินาทีด้วย overlap 50% เพื่อจำกัด RAM; คืนดนตรีโดยหักเสียงร้องที่โมเดลประมาณออกจากต้นฉบับ ใช้ RAM ว่างหลาย GB และอาจใช้เวลาหลายเท่าของความยาวเพลง บริบทที่สั้นลงและ quantization อาจลดคุณภาพเมื่อเทียบกับ checkpoint เต็ม 8 วินาที ไม่ใช่โมเดลที่ฝึกเฉพาะภาษาไทย
+- **MDX-Net Inst HQ 3:** ใช้ [โมเดลเดิมของ UVR](https://github.com/TRvlvr/model_repo/releases/tag/all_public_uvr_models) โดยตั้งค่า FFT และ gain compensation ตาม [ข้อมูลโมเดลของ UVR](https://github.com/TRvlvr/application_data/blob/main/mdx_model_data/model_data.json) ใช้ทรัพยากรน้อยกว่าตัวเลือกใหม่
+
+ทั้งสองทำงานผ่าน [ONNX Runtime](https://github.com/microsoft/onnxruntime/tree/main/js/node) กราฟ BS-RoFormer ที่บีบอัดใน `electron-assets/` อ้างอิงน้ำหนักจากไฟล์ที่ดาวน์โหลดและตรวจ hash แล้ว ไม่รวมโมเดล 166 MB ไว้ในตัวติดตั้ง สร้างกราฟซ้ำได้ด้วย `python scripts/prepare-roformer.py path/to/bs_roformer_ep317_sdr12.9755_quantized_uint8.onnx` โดยติดตั้ง `onnx` เฉพาะสภาพแวดล้อมสำหรับพัฒนา การแปลง STFT และ mask อ้างอิงรูปแบบจาก [MSS_ONNX_TensorRT](https://github.com/ZFTurbo/MSS_ONNX_TensorRT/blob/main/models/preprocess.py)
 
 ทดสอบเครื่องมือนี้กับโมเดลจริง:
 
@@ -149,15 +156,21 @@ Smoke test แสดงหน้าต่างชั่วครู่เพื
 npm.cmd run build
 node scripts/test-electron.mjs --separation
 node scripts/test-electron.mjs --packaged --separation
+node scripts/test-electron.mjs --roformer
+node scripts/test-electron.mjs --packaged --roformer
 ```
 
 การทดสอบครั้งแรกจะดาวน์โหลดโมเดลเข้า `artifacts/test-profile/models/` โดยตรวจการแยกจริง, WAV, การรักษาต้นฉบับ/การตั้งค่าคลิป, Undo, cancel และการปฏิเสธ input ที่ผิดรูปแบบ เพิ่ม `--speech` เพื่อดาวน์โหลดเสียงพูดตัวอย่างจาก [PyTorch / VOiCES](https://github.com/pytorch/audio/blob/main/examples/tutorials/audio_feature_augmentation_tutorial.py) และวัดการลดเสียงคนผ่านหลายหน้าต่างประมวลผล ตัวอย่างเสียงเป็น CC BY 4.0 โดย Lab41 / SRI; ไฟล์และผลวัดอยู่ใน `artifacts/speech-*` และไม่ถูกรวมในแอปหรือ commit
+
+`--roformer` ตรวจโมเดลทั้งสอง การสลับโมเดล การล้างผลเก่า การยกเลิก และการบันทึก WAV เพิ่ม `--song "C:\path\song.mp3"` เพื่อทดลองไฟล์ในเครื่องด้วย BS-RoFormer โดยตรวจว่าผลลัพธ์มีความยาวครบและไฟล์ต้นฉบับไม่เปลี่ยน ผลอยู่ที่ `artifacts/sample-instrumental-bs-roformer.wav` ซึ่งไม่ถูก commit และไม่มีการอัปโหลดเพลง การตรวจนี้ยืนยัน workflow และความถูกต้องของไฟล์ ยังไม่ใช่คะแนนคุณภาพการแยกเมื่อไม่มี vocal/instrumental ต้นฉบับแยกแทร็ก
 
 ## โครงสร้าง
 
 ```text
 electron/          Main process, native save และ preload bridge ที่จำกัดขอบเขต
 electron/separation*.ts  ดาวน์โหลดโมเดล, worker และ STFT สำหรับ AI Vocal Remover
+electron/roformer-dsp.ts  STFT, complex mask, overlap-add และ vocal subtraction ของ BS-RoFormer
+electron-assets/   กราฟ BS-RoFormer ที่บีบอัด; น้ำหนักโมเดลดาวน์โหลดแยก
 src/model.ts       ชนิดข้อมูล, validation, project defaults และ WAV encoder
 src/timeline.ts    คำนวณช่วงคลิป, split/trim/move และแถวของคลิปที่ทับกัน
 src/synthesis.ts   สร้างเสียงเครื่องดนตรีทั้ง 9 แบบด้วย PCM
