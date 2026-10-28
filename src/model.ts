@@ -110,8 +110,8 @@ export function parseProject(text: string): Project {
     trackIds.add(t.id as string);
     for (const c of t.clips) {
       if (!record(c) || !uuid(c.id) || clipIds.has(c.id) || !sourceIds.has(String(c.sourceId)) || !name(c.name) ||
-          !numberIn(c.offset, 0, p.bars * 4) || c.offset >= p.bars * 4 || !numberIn(c.trim, 0, 600) ||
-          !(c.length === null || numberIn(c.length, 0.01, 612)) || !numberIn(c.rate, 0.5, 2) ||
+          !numberIn(c.offset, 0, p.bars * 4) || c.offset >= p.bars * 4 || !numberIn(c.trim, 0, 612) ||
+          !(c.length === null || numberIn(c.length, 0.01, 1225)) || !numberIn(c.rate, 0.5, 2) ||
           typeof c.reverse !== 'boolean' || typeof c.muted !== 'boolean' || !numberIn(c.gain, 0, 2) || !validEffects(c.effects)) throw new Error('Project contains an invalid clip.');
       clipIds.add(c.id);
       if (clipIds.size > 512) throw new Error('Maximum 512 clips per project.');

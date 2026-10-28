@@ -172,7 +172,7 @@ function inspector(t: Track) {
   const c = clip(); const clipMode = inspectorMode === 'clip' && c;
   const fx = clipMode ? c.effects : t.effects;
   return `<div class="inspector-mode"><button data-inspector="clip" class="${clipMode ? 'active' : ''}" ${c ? '' : 'disabled'}>Clip effects</button><button data-inspector="track" class="${clipMode ? '' : 'active'}">Layer mixer</button></div><div class="selected-channel" style="--accent:${t.color}"><div class="selected-icon">${icon(kindIcon(trackKind(t)))}</div><div><input id="${clipMode ? 'clip-name' : 'track-name'}" aria-label="${clipMode ? 'Clip' : 'Track'} name" maxlength="80" value="${esc(clipMode ? c.name : t.name)}"/><small>${clipMode ? 'SELECTED CLIP' : 'LAYER'} / ${t.id.slice(0, 4).toUpperCase()}</small></div></div>
-    <div class="inspector-actions">${button('duplicate', 'duplicate', 'Duplicate selected track')}${button('delete', 'trash', 'Delete selected track')}<button class="text-button" data-action="reset-fx">${icon('reset')} Reset FX</button></div>
+    <div class="inspector-actions">${button(clipMode ? 'duplicate-clip' : 'duplicate', 'duplicate', clipMode ? 'Duplicate selected clip' : 'Duplicate selected layer')}${button(clipMode ? 'delete-clip' : 'delete', 'trash', clipMode ? 'Delete selected clip' : 'Delete selected layer')}<button class="text-button" data-action="reset-fx">${icon('reset')} Reset FX</button></div>
     <div class="inspector-scroll">
     <div class="control-section"><div class="section-title">${clipMode ? 'CLIP GAIN' : 'CHANNEL'} <span>01</span></div>${clipMode ? slider('Clip gain', 'gain', c.gain, 0, 2, 0.01, `${Math.round(c.gain * 100)}%`) + `<button class="reverse-button" data-action="mute-clip" aria-pressed="${c.muted}">Mute this clip <span>${c.muted ? 'ON' : 'OFF'}</span></button>` : slider('Volume', 'volume', t.volume, 0, 1, 0.01, `${Math.round(t.volume * 100)}%`) + slider('Pan', 'pan', t.pan, -1, 1, 0.01, t.pan === 0 ? 'Center' : `${Math.round(Math.abs(t.pan) * 100)}${t.pan < 0 ? 'L' : 'R'}`)}</div>
     <div class="control-section"><div class="section-title">EQUALIZER <span class="fx-dot"></span></div><div class="eq-visual"><svg viewBox="0 0 220 44" aria-hidden="true"><path class="eq-grid" d="M0 11h220M0 22h220M0 33h220M44 0v44M88 0v44M132 0v44M176 0v44"/><path id="eq-curve" d="M0 ${22 - fx.low} Q55 ${22 - fx.low} 90 ${22 - fx.mid} T150 ${22 - fx.high} T220 ${22 - fx.high}"/></svg></div>${slider('Low · 200 Hz', 'fx.low', fx.low, -12, 12, 0.5, `${fx.low > 0 ? '+' : ''}${fx.low} dB`)}${slider('Mid · 1.2 kHz', 'fx.mid', fx.mid, -12, 12, 0.5, `${fx.mid > 0 ? '+' : ''}${fx.mid} dB`)}${slider('High · 5 kHz', 'fx.high', fx.high, -12, 12, 0.5, `${fx.high > 0 ? '+' : ''}${fx.high} dB`)}</div>
@@ -340,7 +340,7 @@ app.addEventListener('click', event => {
   if (element.dataset.action === 'cancel-separation') { void action('cancel-separation'); return; }
   if (busy) return;
   if (element.dataset.add) {
-    if (project.tracks.length >= 24) return notify('Maximum 24 tracks per project.', true);
+    if (project.tracks.length >= 24 || project.sources.length >= 128 || clipCount(project) >= 512) return notify('Project layer, source or clip limit reached.', true);
     edit(() => { const item = createInstrument(element.dataset.add as TrackKind, project.tracks.length); project.sources.push(item.source); project.tracks.push(item.track); selectTrack(item.track.id); tab = 'pattern'; }, true);
   } else if (element.dataset.selectClip) { const t = project.tracks.find(t => t.clips.some(c => c.id === element.dataset.selectClip))!; selectClip(t, t.clips.find(c => c.id === element.dataset.selectClip)!); render(); }
   else if (element.dataset.inspector) { inspectorMode = element.dataset.inspector as typeof inspectorMode; render(); }
@@ -399,7 +399,8 @@ async function action(name: string) {
       project = { version: 2, name: 'Untitled session', bpm: 120, bars: 8, master: 0.8, loop: true, sources: [], tracks: [] };
       selected = ''; selectedClip = ''; cursor = 0; dirty = false; document.title = 'Lemix Studio'; render(); break;
     case 'save': await task(async () => {
-      if (await saveBytes(project.name, 'project', new TextEncoder().encode(JSON.stringify(project)))) {
+      const text = JSON.stringify(project); parseProject(text);
+      if (await saveBytes(project.name, 'project', new TextEncoder().encode(text))) {
         dirty = false; document.title = `${project.name} — Lemix Studio`; render(); notify('Project saved. Your sounds and settings are all included.');
       }
     }); break;

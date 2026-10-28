@@ -49,7 +49,7 @@ app.on('browser-window-created', (_event, window) => {
       await click('[data-action="undo"]'); assert.equal(await count(), 4);
       await click('[data-action="redo"]'); assert.equal(await count(), 5);
       await run(`document.querySelectorAll('.track-name')[4].click()`);
-      await click('[data-action="delete"]'); assert.equal(await count(), 4);
+      await click('[data-inspector="track"]'); await click('[data-action="delete"]'); assert.equal(await count(), 4);
       await click('[data-step="0:1"]');
       assert.equal(await run(`document.querySelector('[data-step="0:1"]').getAttribute('aria-pressed')`), 'true');
       await click('[data-action="undo"]');
@@ -104,7 +104,7 @@ app.on('browser-window-created', (_event, window) => {
       await click('[data-action="save"]'); await waitFor(`!document.body.classList.contains('busy')`, 'Save did not complete');
       const withAudio = await readFile(path.join(output, 'test-project.lemix'), 'utf8');
       assert.equal(JSON.parse(withAudio).sources.find(s=>s.id===JSON.parse(withAudio).tracks[4].clips[0].sourceId).audio, wave.toString('base64'));
-      await click('[data-action="delete"]'); assert.equal(await count(), 4);
+      await click('[data-inspector="track"]'); await click('[data-action="delete"]'); assert.equal(await count(), 4);
       await run(`{ window.confirm=()=>true; const files=new DataTransfer(); files.items.add(new File([${JSON.stringify(withAudio)}],'roundtrip.lemix')); const input=document.querySelector('#project-file'); input.files=files.files; input.dispatchEvent(new Event('change',{bubbles:true})); }`);
       await waitFor(`document.querySelectorAll('.track-header').length===5 && !document.body.classList.contains('busy')`, 'Project did not reopen with embedded audio');
       assert.equal(await run(`window.lemix.saveFile('bad','invalid',new Uint8Array([1])).then(()=>false,()=>true)`), true);
@@ -127,6 +127,7 @@ app.on('browser-window-created', (_event, window) => {
       await run(`{const c=document.querySelector('.lane:last-child [data-clip]');const handle=c.querySelector('[data-trim="right"]');const box=handle.getBoundingClientRect();const width=document.querySelector('.timeline').getBoundingClientRect().width;handle.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,clientX:box.left+3,clientY:box.top+24}));document.dispatchEvent(new PointerEvent('pointermove',{clientX:box.left+3-0.25/(8*4*60/112)*width,clientY:box.top+24}));document.dispatchEvent(new PointerEvent('pointerup'));}`);
       await run(`{const handle=document.querySelector('.lane:last-child [data-trim="left"]');const box=handle.getBoundingClientRect();const width=document.querySelector('.timeline').getBoundingClientRect().width;handle.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,clientX:box.left+3,clientY:box.top+24}));document.dispatchEvent(new PointerEvent('pointermove',{clientX:box.left+3-0.1/(8*4*60/112)*width,clientY:box.top+24}));document.dispatchEvent(new PointerEvent('pointerup'));}`);
       await control('fx.low','6'); await control('gain','0.7');
+      assert.ok(await run(`!!document.querySelector('.inspector-actions [data-action="delete-clip"]')`), 'Clip inspector must delete a clip, not its layer');
       await click('[data-action="duplicate-clip"]');
       assert.equal(await run(`document.querySelectorAll('.lane:last-child [data-clip]').length`),2);
       await click('[data-action="delete-clip"]');

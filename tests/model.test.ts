@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { audible, createSource, createInstrument, cloneProject, demoProject, duration, encodeWav, parseProject, maxBars } from '../src/model.ts';
+import { audible, createSource, createInstrument, createClip, cloneProject, demoProject, duration, encodeWav, parseProject, maxBars } from '../src/model.ts';
 import { synthesize } from '../src/synthesis.ts';
 
 test('demo round trips with independent patterns and valid duration', () => {
@@ -75,6 +75,19 @@ test('full-song arrangements round trip and stay within the rendering duration l
   assert.equal(parseProject(JSON.stringify(p)).bars, 160);
   assert.ok(maxBars(40) * 4 * 60 / 40 <= 612);
   p.bars = maxBars(p.bpm) + 1;
+  assert.throws(() => parseProject(JSON.stringify(p)));
+});
+
+test('long slowed-down clips and late synth trims remain saveable; clip limits reject overflow', () => {
+  const p = demoProject(); p.bpm = 40; p.bars = maxBars(p.bpm);
+  const c = p.tracks[0].clips[0]; c.rate = 0.5; c.length = 1224;
+  assert.equal(parseProject(JSON.stringify(p)).tracks[0].clips[0].length, 1224);
+  c.trim = 611; c.length = 2;
+  assert.equal(parseProject(JSON.stringify(p)).tracks[0].clips[0].trim, 611);
+  p.tracks.forEach(t => { t.clips = []; });
+  p.tracks[0].clips = Array.from({ length: 512 }, () => createClip(p.sources[0]));
+  assert.equal(parseProject(JSON.stringify(p)).tracks[0].clips.length, 512);
+  p.tracks[0].clips.push(createClip(p.sources[0]));
   assert.throws(() => parseProject(JSON.stringify(p)));
 });
 
