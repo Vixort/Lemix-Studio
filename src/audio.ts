@@ -1,0 +1,202 @@
+import { audible, duration, encodeWav } from './model.ts';
+import type { Project, Track } from './model.ts';
+import { synthesize } from './synthesis.ts';
+
+interface Chain {
+  input: GainNode; volume: GainNode; pan: StereoPannerNode;
+  low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; cutoff: BiquadFilterNode;
+  drive: WaveShaperNode; compressor: DynamicsCompressorNode;
+  wet: GainNode; delayWet: GainNode; echo: DelayNode;
+}
+
+function impulse(context: BaseAudioContext): AudioBuffer {
+  const buffer = context.createBuffer(2, Math.floor(context.sampleRate * 1.6), context.sampleRate);
+  for (let channel = 0; channel < 2; channel++) {
+    const data = buffer.getChannelData(channel);
+    let seed = 313 + channel;
+    for (let i = 0; i < data.length; i++) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      data[i] = (seed / 2147483648 - 1) * (1 - i / data.length) ** 2.5;
+    }
+  }
+  return buffer;
+}
+
+function setMix(chain: Chain, track: Track, project: Project) {
+  const fx = track.effects;
+  chain.volume.gain.value = audible(project.tracks, track) ? track.volume : 0;
+  chain.pan.pan.value = track.pan;
+  chain.low.gain.value = fx.low; chain.mid.gain.value = fx.mid; chain.high.gain.value = fx.high;
+  chain.cutoff.frequency.value = fx.cutoff;
+  chain.wet.gain.value = fx.reverb * 0.65; chain.delayWet.gain.value = fx.delay * 0.55;
+  chain.echo.delayTime.value = 60 / project.bpm * 0.75;
+  chain.compressor.threshold.value = -6 - fx.compression * 30;
+  chain.compressor.ratio.value = 1 + fx.compression * 7;
+  if (fx.drive === 0) chain.drive.curve = null;
+  else {
+    const curve = new Float32Array(1024);
+    const amount = 1 + fx.drive * 12;
+    for (let i = 0; i < curve.length; i++) curve[i] = Math.tanh((i * 2 / (curve.length - 1) - 1) * amount) / Math.tanh(amount);
+    chain.drive.curve = curve;
+  }
+}
+
+function createChain(context: BaseAudioContext, output: AudioNode, room: AudioBuffer, track: Track, project: Project): Chain {
+  const input = context.createGain();
+  const low = context.createBiquadFilter(); low.type = 'lowshelf'; low.frequency.value = 200;
+  const mid = context.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 1200; mid.Q.value = 0.7;
+  const high = context.createBiquadFilter(); high.type = 'highshelf'; high.frequency.value = 5000;
+  const cutoff = context.createBiquadFilter(); cutoff.type = 'lowpass'; cutoff.Q.value = 0.5;
+  const drive = context.createWaveShaper(); drive.oversample = '2x';
+  const compressor = context.createDynamicsCompressor(); compressor.attack.value = 0.008; compressor.release.value = 0.16;
+  const volume = context.createGain(); const pan = context.createStereoPanner();
+  input.connect(low).connect(mid).connect(high).connect(cutoff).connect(drive).connect(compressor);
+  compressor.connect(volume);
+  const convolver = context.createConvolver(); convolver.buffer = room;
+  const wet = context.createGain(); compressor.connect(convolver).connect(wet).connect(volume);
+  const echo = context.createDelay(2); const delayWet = context.createGain();
+  compressor.connect(echo).connect(delayWet).connect(volume);
+  volume.connect(pan).connect(output);
+  const chain = { input, volume, pan, low, mid, high, cutoff, drive, compressor, wet, delayWet, echo };
+  setMix(chain, track, project);
+  return chain;
+}
+
+export class AudioEngine {
+  context = new AudioContext({ sampleRate: 44100, latencyHint: 'interactive' });
+  analyser = this.context.createAnalyser();
+  master = this.context.createGain();
+  playing = false;
+  private startedAt = 0;
+  private cursor = 0;
+  private nextCycle = 0;
+  private timer?: ReturnType<typeof setInterval>;
+  private sources = new Set<AudioBufferSourceNode>();
+  private chains = new Map<string, Chain>();
+  private cache = new Map<string, { signature: string; audio?: string; buffer: AudioBuffer }>();
+  private currentProject?: Project;
+  private generation = 0;
+  onEnded = () => {};
+
+  constructor() {
+    const limiter = this.context.createDynamicsCompressor();
+    limiter.threshold.value = -1; limiter.knee.value = 0; limiter.ratio.value = 20;
+    limiter.attack.value = 0.003; limiter.release.value = 0.1;
+    this.analyser.fftSize = 256;
+    this.master.connect(limiter).connect(this.analyser).connect(this.context.destination);
+  }
+
+  async buffer(track: Track, project: Project): Promise<AudioBuffer> {
+    const signature = JSON.stringify([track.kind, project.bpm, project.bars, track.steps, track.notes, track.reverse]);
+    const cached = this.cache.get(track.id);
+    if (cached?.signature === signature && cached.audio === track.audio) return cached.buffer;
+    let buffer: AudioBuffer;
+    if (track.kind === 'audio' && track.audio) {
+      const binary = atob(track.audio);
+      const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+      buffer = await this.context.decodeAudioData(bytes.buffer);
+      if (buffer.duration > 600) throw new Error('Audio is longer than 10 minutes. Trim it before importing.');
+    } else {
+      const pcm = synthesize(track, project.bpm, project.bars, this.context.sampleRate);
+      buffer = this.context.createBuffer(1, pcm.length, this.context.sampleRate);
+      buffer.copyToChannel(pcm as Float32Array<ArrayBuffer>, 0);
+    }
+    if (track.reverse) for (let ch = 0; ch < buffer.numberOfChannels; ch++) buffer.getChannelData(ch).reverse();
+    this.cache.set(track.id, { signature, audio: track.audio, buffer });
+    return buffer;
+  }
+
+  async prepare(project: Project) {
+    const ids = new Set(project.tracks.map(t => t.id));
+    for (const id of this.cache.keys()) if (!ids.has(id)) this.cache.delete(id);
+    return Promise.all(project.tracks.map(t => this.buffer(t, project)));
+  }
+
+  private schedule(context: BaseAudioContext, track: Track, buffer: AudioBuffer, input: AudioNode, project: Project, when: number, cursor: number) {
+    const offset = track.offset * 60 / project.bpm;
+    const delay = Math.max(0, offset - cursor);
+    const position = track.trim + Math.max(0, cursor - offset) * track.rate;
+    const length = Math.min((buffer.duration - position) / track.rate, duration(project) - cursor - delay);
+    if (length <= 0) return;
+    const source = context.createBufferSource(); source.buffer = buffer; source.playbackRate.value = track.rate;
+    const fade = context.createGain();
+    const start = when + delay;
+    const ramp = Math.min(0.008, length / 3);
+    fade.gain.setValueAtTime(0, start); fade.gain.linearRampToValueAtTime(1, start + ramp);
+    fade.gain.setValueAtTime(1, start + length - ramp); fade.gain.linearRampToValueAtTime(0, start + length);
+    source.connect(fade).connect(input); source.start(start, position, length * track.rate);
+    source.stop(start + length);
+    if (context === this.context) {
+      this.sources.add(source);
+      source.onended = () => { this.sources.delete(source); source.disconnect(); fade.disconnect(); };
+    }
+  }
+
+  async play(project: Project, cursor: number) {
+    this.stop();
+    const generation = this.generation;
+    await this.context.resume();
+    const buffers = await this.prepare(project);
+    if (generation !== this.generation) return;
+    this.currentProject = project; this.cursor = cursor >= duration(project) ? 0 : cursor;
+    this.startedAt = this.context.currentTime + 0.04; this.playing = true;
+    const room = impulse(this.context);
+    this.master.gain.value = project.master;
+    for (let i = 0; i < project.tracks.length; i++) {
+      const track = project.tracks[i];
+      const chain = createChain(this.context, this.master, room, track, project);
+      this.chains.set(track.id, chain);
+      this.schedule(this.context, track, buffers[i], chain.input, project, this.startedAt, this.cursor);
+    }
+    this.nextCycle = this.startedAt + duration(project) - this.cursor;
+    this.timer = setInterval(() => {
+      if (project.loop && this.context.currentTime + 0.2 >= this.nextCycle) {
+        for (let i = 0; i < project.tracks.length; i++) this.schedule(this.context, project.tracks[i], buffers[i], this.chains.get(project.tracks[i].id)!.input, project, this.nextCycle, 0);
+        this.nextCycle += duration(project);
+      } else if (!project.loop && this.context.currentTime >= this.nextCycle) {
+        this.stop(); this.onEnded();
+      }
+    }, 50);
+  }
+
+  position(): number {
+    if (!this.playing || !this.currentProject) return this.cursor;
+    const elapsed = Math.max(0, this.context.currentTime - this.startedAt) + this.cursor;
+    return this.currentProject.loop ? elapsed % duration(this.currentProject) : Math.min(elapsed, duration(this.currentProject));
+  }
+
+  updateMix(project: Project) {
+    this.master.gain.setTargetAtTime(project.master, this.context.currentTime, 0.015);
+    for (const track of project.tracks) { const chain = this.chains.get(track.id); if (chain) setMix(chain, track, project); }
+  }
+
+  stop() {
+    this.generation++;
+    if (this.playing) this.cursor = this.position();
+    this.playing = false; clearInterval(this.timer);
+    for (const source of this.sources) { source.stop(); source.disconnect(); }
+    this.sources.clear();
+    for (const chain of this.chains.values()) {
+      chain.input.disconnect(); chain.pan.disconnect();
+    }
+    this.chains.clear();
+  }
+
+  async export(project: Project): Promise<Uint8Array> {
+    const buffers = await this.prepare(project);
+    const context = new OfflineAudioContext(2, Math.ceil((duration(project) + 2) * 44100), 44100);
+    const master = context.createGain(); master.gain.value = project.master;
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -1; limiter.knee.value = 0; limiter.ratio.value = 20;
+    limiter.attack.value = 0.003; limiter.release.value = 0.1;
+    master.connect(limiter).connect(context.destination);
+    const room = impulse(context);
+    for (let i = 0; i < project.tracks.length; i++) {
+      const track = project.tracks[i];
+      const chain = createChain(context, master, room, track, project);
+      this.schedule(context, track, buffers[i], chain.input, project, 0, 0);
+    }
+    const rendered = await context.startRendering();
+    return encodeWav([rendered.getChannelData(0), rendered.getChannelData(1)], rendered.sampleRate);
+  }
+}
