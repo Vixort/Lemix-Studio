@@ -19,6 +19,8 @@ test('untrusted projects reject broken structure, duplicate IDs and hostile valu
     (p: any) => p.tracks[0].steps[0] = [true],
     (p: any) => p.tracks[0].notes[0] = 0.5,
     (p: any) => p.tracks[1].id = p.tracks[0].id,
+    (p: any) => p.tracks[0].id = '\" onmouseover=\"alert(1)',
+    (p: any) => p.tracks[0].offset = 127,
     (p: any) => p.tracks[0].kind = 'unknown',
     (p: any) => p.tracks[0].trim = -1,
     (p: any) => { p.tracks[0].kind = 'audio'; p.tracks[0].audio = 'file:///etc/passwd'; },

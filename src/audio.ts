@@ -87,7 +87,7 @@ export class AudioEngine {
   }
 
   async buffer(track: Track, project: Project): Promise<AudioBuffer> {
-    const signature = JSON.stringify([track.kind, project.bpm, project.bars, track.steps, track.notes, track.reverse]);
+    const signature = JSON.stringify(track.kind === 'audio' ? [track.kind, track.reverse] : [track.kind, project.bpm, project.bars, track.steps, track.notes, track.reverse]);
     const cached = this.cache.get(track.id);
     if (cached?.signature === signature && cached.audio === track.audio) return cached.buffer;
     let buffer: AudioBuffer;

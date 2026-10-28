@@ -15,10 +15,18 @@ function createWindow() {
     webPreferences: {
       preload: path.join(directory, 'preload.cjs'),
       nodeIntegration: false, contextIsolation: true, sandbox: true,
+      backgroundThrottling: false,
     },
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
+  window.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(window, {
+      type: 'question', buttons: ['Keep editing', 'Discard changes'], defaultId: 0, cancelId: 0,
+      title: 'Unsaved project', message: 'Close Lemix Studio without saving your changes?',
+    });
+    if (choice === 1) event.preventDefault();
+  });
   if (devUrl) void window.loadURL(devUrl);
   else void window.loadFile(path.join(directory, '../dist/index.html'));
 }

@@ -51,12 +51,12 @@ export function parseProject(text: string): Project {
       p.tracks.length > 24) throw new Error('Unsupported or invalid Lemix project.');
   const ids = new Set<string>();
   for (const t of p.tracks) {
-    if (!record(t) || typeof t.id !== 'string' || t.id.length > 80 || ids.has(t.id) ||
+    if (!record(t) || typeof t.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t.id) || ids.has(t.id) ||
         typeof t.name !== 'string' || t.name.length > 80 ||
         !['drums', 'bass', 'keys', 'pad', 'audio'].includes(String(t.kind)) ||
         typeof t.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(t.color) ||
         !numberIn(t.volume, 0, 1) || !numberIn(t.pan, -1, 1) ||
-        !numberIn(t.offset, 0, 128) || !numberIn(t.trim, 0, 600) || !numberIn(t.rate, 0.5, 2) ||
+        !numberIn(t.offset, 0, p.bars * 4 - 0.25) || !numberIn(t.trim, 0, 600) || !numberIn(t.rate, 0.5, 2) ||
         typeof t.muted !== 'boolean' || typeof t.solo !== 'boolean' || typeof t.reverse !== 'boolean' ||
         !record(t.effects) || !numberIn(t.effects.low, -12, 12) || !numberIn(t.effects.mid, -12, 12) ||
         !numberIn(t.effects.high, -12, 12) || !numberIn(t.effects.cutoff, 100, 20000) ||
@@ -64,7 +64,7 @@ export function parseProject(text: string): Project {
         !Array.isArray(t.steps) || t.steps.length !== 4 ||
         !t.steps.every(row => Array.isArray(row) && row.length === 16 && row.every(v => typeof v === 'boolean')) ||
         !Array.isArray(t.notes) || t.notes.length !== 16 || !t.notes.every(n => numberIn(n, -1, 12) && Number.isInteger(n)) ||
-        (t.kind === 'audio' && (typeof t.audio !== 'string' || t.audio.length > 34 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/.test(t.audio))) ||
+        (t.kind === 'audio' && (typeof t.audio !== 'string' || !t.audio.length || t.audio.length % 4 !== 0 || t.audio.length > 34 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/.test(t.audio))) ||
         (t.kind !== 'audio' && t.audio !== undefined)) throw new Error('Project contains an invalid track.');
     ids.add(t.id);
   }
