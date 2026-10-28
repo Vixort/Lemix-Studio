@@ -262,6 +262,19 @@ app.on('browser-window-created', (_event, window) => {
       await click('[data-action="play"]');
       await waitFor(`parseFloat(document.querySelector('#meter-fill').style.width)>0`,'Repaired realtime playback has no signal');
       await click('[data-action="stop"]');
+      await control('cleanup.floor','-39'); await click('[data-inspector="track"]');
+      await run(`{document.querySelector('[data-action="play"]').click();const volume=document.querySelector('[data-control="volume"]');volume.value='0';volume.dispatchEvent(new Event('input',{bubbles:true}));volume.dispatchEvent(new Event('change',{bubbles:true}));}`);
+      await waitFor(`parseFloat(document.querySelector('#time').textContent.split(':')[1])>=1.2`,'Preparation did not resume with the latest channel settings');
+      assert.equal(await run(`parseFloat(document.querySelector('#meter-fill').style.width)`),0,'Volume changed during preparation was ignored');
+      await control('volume','1'); await waitFor(`parseFloat(document.querySelector('#meter-fill').style.width)>0`,'Restored channel gain has no signal');
+      await click('[data-action="stop"]'); await click('[data-inspector="clip"]');
+      await control('cleanup.floor','-38'); await click('.track-header [data-mute]');
+      await click('[data-action="play"]'); await waitFor(`document.querySelector('.transport-end').textContent.includes('PLAYING')`,'Muted playback did not start');
+      await run(`window.repairPreparedOnUnmute=false;window.repairObserver=new MutationObserver(()=>{if(document.querySelector('.transport-end')?.textContent.includes('PREPARING'))window.repairPreparedOnUnmute=true;});window.repairObserver.observe(document.querySelector('#app'),{subtree:true,childList:true});`);
+      await click('.track-header [data-mute]');
+      await waitFor(`window.repairPreparedOnUnmute`,'Unmuting skipped audio repair preparation');
+      await waitFor(`parseFloat(document.querySelector('#meter-fill').style.width)>0`,'Unmuting repaired audio has no signal');
+      await run(`window.repairObserver.disconnect()`); await click('[data-action="stop"]');
       window.showInactive();await sleep(400);await writeFile(path.join(output,'audio-repair.png'),(await window.webContents.capturePage()).toPNG());window.hide();
       await click('[data-action="remove-cleanup"]');
       assert.equal(await run(`!!document.querySelector('[data-action="bypass-cleanup"]')`),false);
@@ -274,7 +287,7 @@ app.on('browser-window-created', (_event, window) => {
         await click('[data-action="vocal-remover"]');
         assert.ok(await run(`document.querySelector('.vocal-empty')?.textContent.includes('Select an imported audio track')`));
         await click('[data-action="close-vocal"]');
-        await run(`document.querySelectorAll('.track-name')[4].click(); document.querySelectorAll('.track-header [data-mute]')[4].click()`);
+        await run(`document.querySelectorAll('.track-name')[4].click(); const mute=document.querySelectorAll('.track-header [data-mute]')[4]; if(mute.getAttribute('aria-pressed')==='true')mute.click()`);
         assert.equal(await run(`document.querySelectorAll('.track-header [data-mute]')[4].getAttribute('aria-pressed')`), 'false');
         await click('[data-action="vocal-remover"]');
         window.showInactive(); await sleep(400);

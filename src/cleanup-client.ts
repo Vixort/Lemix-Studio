@@ -1,4 +1,5 @@
 import type { Cleanup } from './model.ts';
+// Inline bundles work in Electron's file:// renderer without remote worker URLs.
 import RepairWorker from './cleanup-worker?worker&inline';
 
 export function repairBuffer(input: AudioBuffer, settings: Cleanup, context: AudioContext, signal?: AbortSignal): Promise<AudioBuffer> {

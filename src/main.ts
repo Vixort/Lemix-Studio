@@ -58,7 +58,7 @@ function changed(rebuild = false) {
   document.title = `• ${project.name} — Lemix Studio`;
   document.querySelector('#save-state')!.textContent = 'Unsaved changes';
   engine.updateMix(project);
-  if (rebuild && (engine.playing || engine.preparing)) {
+  if (engine.preparing || rebuild && engine.playing) {
     clearTimeout(restartTimer);
     restartTimer = setTimeout(() => { cursor = engine.position(); void play(); }, 120);
   }
@@ -381,7 +381,7 @@ app.addEventListener('click', event => {
   else if (element.dataset.select) { selectTrack(element.dataset.select); render(); }
   else if (element.dataset.mute || element.dataset.solo) {
     const t = project.tracks.find(t => t.id === (element.dataset.mute ?? element.dataset.solo))!;
-    edit(() => { if (element.dataset.mute) t.muted = !t.muted; else t.solo = !t.solo; });
+    edit(() => { if (element.dataset.mute) t.muted = !t.muted; else t.solo = !t.solo; }, project.tracks.some(t => t.clips.some(c => c.cleanup?.enabled)));
   } else if (element.dataset.tab) { tab = element.dataset.tab as typeof tab; render(); }
   else if (element.dataset.step) {
     const [row, step] = element.dataset.step.split(':').map(Number);
