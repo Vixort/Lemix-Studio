@@ -10,8 +10,9 @@ await mkdir(output, { recursive: true });
 app.setPath('userData', path.join(output, 'test-profile'));
 dialog.showSaveDialog = async (_window, options) => ({ canceled: false, filePath: path.join(output, options.filters[0].extensions[0] === 'wav' ? 'test-mix.wav' : 'test-project.lemix') });
 dialog.showMessageBoxSync = () => 1;
-const testSeparation = process.argv.includes('--separation') || process.argv.includes('--speech');
-const timeout = setTimeout(() => { console.error('Electron smoke test timed out'); app.exit(1); }, testSeparation ? 300000 : 60000);
+const testRoformer = process.argv.includes('--roformer');
+const testSeparation = testRoformer || process.argv.includes('--separation') || process.argv.includes('--speech');
+const timeout = setTimeout(() => { console.error('Electron smoke test timed out'); app.exit(1); }, testRoformer ? 20 * 60 * 1000 : testSeparation ? 300000 : 60000);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 app.on('browser-window-created', (_event, window) => {
@@ -27,7 +28,7 @@ app.on('browser-window-created', (_event, window) => {
     };
     const count = () => run(`document.querySelectorAll('.track-header').length`);
     const waitFor = async (expression, message) => {
-      for (let i = 0; i < (testSeparation ? 2500 : 150); i++) { if (await run(expression)) return; await sleep(100); }
+      for (let i = 0; i < (testRoformer ? 9000 : testSeparation ? 2500 : 150); i++) { if (await run(expression)) return; await sleep(100); }
       throw new Error(message);
     };
     const control = async (name, value) => run(`{ const el=document.querySelector('[data-control="${name}"]'); el.value=${JSON.stringify(value)}; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }`);
@@ -286,6 +287,9 @@ app.on('browser-window-created', (_event, window) => {
       if (testSeparation) {
         await click('[data-action="vocal-remover"]');
         assert.ok(await run(`document.querySelector('.vocal-empty')?.textContent.includes('Select an imported audio track')`));
+        assert.equal(await run(`document.querySelector('#separation-model').value`),'bs-roformer');
+        assert.equal(await run(`document.querySelector('#separation-model').options.length`),2);
+        await run(`{const select=document.querySelector('#separation-model');select.value='mdx';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
         await click('[data-action="close-vocal"]');
         await run(`document.querySelectorAll('.track-name')[4].click(); const mute=document.querySelectorAll('.track-header [data-mute]')[4]; if(mute.getAttribute('aria-pressed')==='true')mute.click()`);
         assert.equal(await run(`document.querySelectorAll('.track-header [data-mute]')[4].getAttribute('aria-pressed')`), 'false');
@@ -326,6 +330,48 @@ app.on('browser-window-created', (_event, window) => {
         const canceledWorker = await run(`(async()=>{let reached=false;const off=window.lemix.onSeparationProgress(p=>{if(p.stage==='separating'&&!reached){reached=true;void window.lemix.cancelSeparation();}});try{await window.lemix.removeVocals(Uint8Array.from(atob(${JSON.stringify(longInput.toString('base64'))}),c=>c.charCodeAt(0)));return {reached,canceled:false};}catch(e){return {reached,canceled:e.message.toLowerCase().includes('canceled')};}finally{off();}})()`);
         assert.deepEqual(canceledWorker, { reached: true, canceled: true });
         console.log('PASS: real MDX-Net inference, instrumental WAV, preserved source/clip settings, stem undo, cancellation and input validation');
+        if (testRoformer) {
+          await run(`{const select=document.querySelector('#separation-model');select.value='bs-roformer';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+          assert.ok(await run(`document.querySelector('.vocal-footnote').textContent.includes('166 MB')`));
+          await click('[data-action="start-separation"]');
+          assert.equal(await run(`document.querySelector('#separation-model').disabled`),true);
+          await click('[data-action="cancel-separation"]');
+          await waitFor(`!document.body.classList.contains('busy')`,'RoFormer cancellation did not release the UI');
+          assert.ok(await run(`document.querySelector('.vocal-error')?.textContent.toLowerCase().includes('canceled')`));
+          await click('[data-action="start-separation"]');
+          await waitFor(`!document.body.classList.contains('busy')`,'BS-RoFormer did not finish');
+          assert.ok(await run(`!!document.querySelector('.vocal-result')`),await run(`document.querySelector('.vocal-error')?.textContent||'Missing RoFormer result'`));
+          await click('[data-action="save-instrumental"]'); await waitFor(`!document.body.classList.contains('busy')`,'RoFormer WAV did not save');
+          const roformer=await readFile(path.join(output,'test-mix.wav'));
+          assert.equal(roformer.length,instrumental.length); assert.ok(!roformer.equals(instrumental),'New model duplicated the MDX output');
+          assert.ok(roformer.subarray(44).some(value=>value!==0),'RoFormer returned silence');
+          await writeFile(path.join(output,'roformer-instrumental.wav'),roformer);
+          await run(`{const select=document.querySelector('#separation-model');select.value='mdx';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+          assert.equal(await run(`!!document.querySelector('.vocal-result')`),false,'Changing models left a stale result');
+          assert.equal(await run(`window.lemix.removeVocals(Uint8Array.from(atob(${JSON.stringify(roformer.toString('base64'))}),c=>c.charCodeAt(0)),'__proto__').then(()=>false,e=>e.message.includes('Unknown vocal separation model'))`),true);
+          console.log('PASS: BS-RoFormer inference, model switching, WAV, cancellation and model ID validation');
+          const songArgument=process.argv.indexOf('--song');
+          if(songArgument>=0){
+            const songPath=process.argv[songArgument+1]; assert.ok(songPath,'Missing --song path');
+            const song=await readFile(songPath); const songBase64=JSON.stringify(song.toString('base64'));
+            await click('[data-action="close-vocal"]');
+            await run(`{const files=new DataTransfer();files.items.add(new File([Uint8Array.from(atob(${songBase64}),c=>c.charCodeAt(0))],${JSON.stringify(path.basename(songPath))},{type:'audio/mpeg'}));const input=document.querySelector('#audio-file');input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);
+            await waitFor(`document.querySelectorAll('.track-header').length===6&&!document.body.classList.contains('busy')`,'Song import did not finish');
+            const expectedFrames=await run(`(async()=>{const context=new AudioContext({sampleRate:44100});try{return(await context.decodeAudioData(Uint8Array.from(atob(${songBase64}),c=>c.charCodeAt(0)).buffer)).length;}finally{await context.close();}})()`);
+            await click('[data-action="vocal-remover"]');
+            await run(`{const select=document.querySelector('#separation-model');select.value='bs-roformer';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+            await click('[data-action="start-separation"]');
+            await waitFor(`!document.body.classList.contains('busy')`,'Song separation did not finish');
+            assert.ok(await run(`!!document.querySelector('.vocal-result')`),await run(`document.querySelector('.vocal-error')?.textContent||'Missing song result'`));
+            await click('[data-action="save-instrumental"]'); await waitFor(`!document.body.classList.contains('busy')`,'Song WAV did not save');
+            const separatedSong=await readFile(path.join(output,'test-mix.wav'));
+            assert.equal(separatedSong.length,44+expectedFrames*4); assert.ok(separatedSong.subarray(44).some(value=>value!==0));
+            assert.deepEqual(await readFile(songPath),song,'Original song changed');
+            await writeFile(path.join(output,'sample-instrumental-bs-roformer.wav'),separatedSong);
+            window.showInactive();await sleep(400);await writeFile(path.join(output,'vocal-roformer-result.png'),(await window.webContents.capturePage()).toPNG());window.hide();
+            console.log(`PASS: supplied song separated into complete ${(expectedFrames/44100).toFixed(2)} s WAV; original file unchanged`);
+          }
+        }
         if (process.argv.includes('--speech')) {
           const speechUrl = 'https://download.pytorch.org/torchaudio/tutorial-assets/Lab41-SRI-VOiCES-src-sp0307-ch127535-sg0042.wav';
           const response = await fetch(speechUrl);

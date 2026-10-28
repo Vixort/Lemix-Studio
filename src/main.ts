@@ -4,6 +4,8 @@ import { COLORS, DRUMS, INSTRUMENTS, CLEANUP_PRESETS, defaultCleanup, MAX_AUDIO_
 import type { Clip, Effects, Project, Source, Track, TrackKind } from './model.ts';
 import { icon } from './icons.ts';
 import { clipDuration, clipCount, layoutClips, moveClip, snapBeat, splitClip, trimClip } from './timeline.ts';
+import { SEPARATION_MODELS } from '../electron/separation-models.ts';
+import type { SeparationModel } from '../electron/separation-models.ts';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const engine = new AudioEngine();
@@ -32,6 +34,7 @@ let separatedBytes: Uint8Array | undefined;
 let separationRunning = false;
 let separationError = '';
 let separationCanceled = false;
+let selectedSeparationModel: SeparationModel = 'bs-roformer';
 const history: Project[] = [];
 const future: Project[] = [];
 const esc = (text: string) => text.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
@@ -284,14 +287,23 @@ function base64(bytes: Uint8Array) {
 function vocalContent() {
   const source = separationSource;
   const ready = !!separatedBytes;
+  const model = SEPARATION_MODELS[selectedSeparationModel];
   document.querySelector('#vocal-content')!.innerHTML = `<div class="vocal-brand">${icon('spark')}<span>LEMIX LAB <small>LOCAL AI</small></span></div><h2>Let the music<br/>take center stage<span>.</span></h2><p>Remove vocals from a song and keep the instrumental for your next remix.</p>
     ${source ? `<div class="vocal-source">${icon('wave')}<span><strong>${esc(source.name)}</strong><small>FULL SOURCE AUDIO · ORIGINAL PRESERVED</small></span><span class="pill">STEREO</span></div>` : '<div class="vocal-empty">Select an imported audio track to get started.<br/>Your song stays on your computer.</div>'}
+    <label class="vocal-model">Separation model<select id="separation-model" ${separationRunning ? 'disabled' : ''}>${Object.entries(SEPARATION_MODELS).map(([id, info]) => `<option value="${id}" ${selectedSeparationModel === id ? 'selected' : ''}>${info.name} · ${info.downloadMB} MB</option>`).join('')}</select><small>${model.description}. Both models can process Thai and English songs; no language setting is needed.</small></label>
     ${separationRunning ? '<div class="vocal-progress"><span id="vocal-stage" aria-live="polite">Preparing your song…</span><progress id="vocal-progress" max="100" aria-label="Vocal separation progress"></progress><small>You can cancel safely. Your original track is untouched.</small></div>' : ready ? '<div class="vocal-result">✓ Your instrumental is ready.<small>Add it to the timeline, or save the complete instrumental as a WAV.</small></div>' : ''}
     ${separationError ? `<p class="vocal-error" role="alert">${esc(separationError)}</p>` : ''}
     <div class="vocal-actions">${separationRunning ? '<button class="text-button" data-action="cancel-separation">Cancel separation</button>' : ready ? `<button class="export-button" data-action="add-instrumental">${icon('plus')} Add instrumental track</button><button class="text-button" data-action="save-instrumental">${icon('export')} Save WAV</button>` : !window.lemix ? '<span class="vocal-error">Open the Electron desktop app to use local AI separation.</span>' : source ? `<button class="export-button" data-action="start-separation">${icon('spark')} Remove vocals</button>` : `<button class="export-button" data-action="vocal-import">${icon('import')} Import a song</button>`}</div>
-    <div class="vocal-footnote">MDX-Net · CPU processing · No song uploads<p>Downloads a verified 67 MB model on first use, then works offline. Results depend on the mix; some vocals or artifacts may remain.</p></div>`;
+    <div class="vocal-footnote">${model.name} · CPU processing · No song uploads<p>Downloads a verified ${model.downloadMB} MB model on first use, then works offline.${selectedSeparationModel === 'bs-roformer' ? ' ViperX ep317 · uint8 · 4-second windows to reduce RAM. Processing can take several times the song length; try a short song first.' : ''} Results depend on the mix; some vocals or artifacts may remain.</p></div>`;
   document.querySelector<HTMLButtonElement>('#vocal-dialog .dialog-close')!.disabled = separationRunning;
 }
+
+document.addEventListener('change', event => {
+  const input = event.target as HTMLSelectElement;
+  if (input.id !== 'separation-model' || separationRunning || !Object.hasOwn(SEPARATION_MODELS, input.value)) return;
+  selectedSeparationModel = input.value as SeparationModel;
+  separatedBytes = undefined; separationError = ''; vocalContent();
+});
 
 function openVocalRemover() {
   const content = source();
@@ -320,7 +332,7 @@ async function removeVocals() {
       if (buffer.numberOfChannels > 2) throw new Error('Vocal Remover supports mono or stereo audio. Downmix surround audio first.');
       const pcm = [buffer.getChannelData(0), buffer.getChannelData(Math.min(1, buffer.numberOfChannels - 1))];
       if (separationCanceled) throw new Error('Separation canceled.');
-      separatedBytes = await window.lemix!.removeVocals(encodeWav(pcm, buffer.sampleRate));
+      separatedBytes = await window.lemix!.removeVocals(encodeWav(pcm, buffer.sampleRate), selectedSeparationModel);
     } catch (error) { separationError = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Could not separate this song.'; }
     finally { separationRunning = false; vocalContent(); }
   });

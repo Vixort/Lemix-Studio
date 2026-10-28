@@ -65,3 +65,4 @@ main{padding:29px 24px 0;min-width:0;background:radial-gradient(ellipse at 30% 0
 .repair-actions { display: flex; align-items: center; gap: 5px; margin-bottom: 12px; }
 .repair-actions > button:first-child { flex: 1; display: flex; gap: 7px; align-items: center; border: 1px solid #3b4d45; border-radius: 4px; background: #a9d9bc0c; padding: 8px; font-size: 8px; color: var(--green); }
 .repair-actions .icon { height: 12px; width: 12px; }
+.vocal-model{display:flex;flex-direction:column;gap:10px;color:#c6bfd5;font-size:11px}.vocal-model select{width:100%;border:1px solid #484155;background:#191820;border-radius:6px;color:#e4ddf3;padding:12px;font:inherit}.vocal-model small{font-size:9px;line-height:1.7;color:#898598}.vocal-model select:focus-visible{outline:2px solid var(--purple);outline-offset:2px}

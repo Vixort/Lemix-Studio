@@ -8,49 +8,60 @@ import { pipeline } from 'node:stream/promises';
 import { once } from 'node:events';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MODEL_HASH, MODEL_NAME, validateSeparationInput } from './separation-dsp.js';
+import { gunzipSync } from 'node:zlib';
+import { validateSeparationInput } from './separation-dsp.js';
+import { SEPARATION_MODELS, separationModel } from './separation-models.js';
+import type { SeparationModel } from './separation-models.js';
 
-const MODEL_URL = `https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/${MODEL_NAME}`;
 const directory = path.dirname(fileURLToPath(import.meta.url));
 let active: { sender: number; controller: AbortController } | undefined;
 
-async function validModel(file: string) {
+async function runtimeModel(file: string, id: SeparationModel) {
+  if (id === 'mdx') return file;
+  const graph = 'bs-roformer-viperx-t401.onnx';
+  const target = path.join(path.dirname(file), graph);
+  await writeFile(target, gunzipSync(await readFile(path.join(directory, '../electron-assets', `${graph}.gz`))));
+  return target;
+}
+
+async function validModel(file: string, expectedHash: string) {
   try {
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(file)) hash.update(chunk);
-    return hash.digest('hex') === MODEL_HASH;
+    return hash.digest('hex') === expectedHash;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
   }
 }
 
-async function ensureModel(signal: AbortSignal, progress: (stage: string, percent: number) => void) {
+async function ensureModel(id: SeparationModel, signal: AbortSignal, progress: (stage: string, percent: number) => void) {
+  const info = SEPARATION_MODELS[id];
   const folder = path.join(app.getPath('userData'), 'models');
-  const model = path.join(folder, MODEL_NAME);
-  if (await validModel(model)) return model;
+  const model = path.join(folder, info.file);
+  if (await validModel(model, info.hash)) { signal.throwIfAborted(); return runtimeModel(model, id); }
   signal.throwIfAborted();
   await mkdir(folder, { recursive: true });
   const temporary = path.join(folder, `${randomUUID()}.download`);
   progress('downloading', 0);
   try {
-    const response = await fetch(MODEL_URL, { signal: AbortSignal.any([signal, AbortSignal.timeout(300000)]) });
+    const response = await fetch(info.url, { signal: AbortSignal.any([signal, AbortSignal.timeout(300000)]) });
     if (!response.ok || !response.body) throw new Error('Cannot download the AI model. Check your connection and try again.');
     const total = Number(response.headers.get('content-length'));
     let received = 0;
     const hash = createHash('sha256');
     const monitor = new Transform({ transform(chunk: Buffer, _encoding, callback) {
       received += chunk.length;
-      if (received > 80 * 1024 * 1024) return callback(new Error('AI model exceeds the expected download size.'));
+      if (received > info.maxBytes) return callback(new Error('AI model exceeds the expected download size.'));
       hash.update(chunk);
       progress('downloading', total > 0 ? Math.min(99, Math.floor(received / total * 100)) : 0);
       callback(null, chunk);
     } });
     await pipeline(Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]), monitor, createWriteStream(temporary, { flags: 'wx' }), { signal });
-    if (hash.digest('hex') !== MODEL_HASH) throw new Error('AI model checksum failed. Please try downloading again.');
+    if (hash.digest('hex') !== info.hash) throw new Error('AI model checksum failed. Please try downloading again.');
     signal.throwIfAborted();
     await rename(temporary, model);
-    return model;
+    return runtimeModel(model, id);
   } finally { await unlink(temporary).catch(() => undefined); }
 }
 
@@ -59,10 +70,11 @@ export function registerSeparation(trustedWindow: (event: IpcMainInvokeEvent) =>
     trustedWindow(event);
     if (active?.sender === event.sender.id) active.controller.abort(new Error('Separation canceled.'));
   });
-  ipcMain.handle('vocal-start', async (event, value: unknown) => {
+  ipcMain.handle('vocal-start', async (event, value: unknown, requestedModel: unknown) => {
     const window = trustedWindow(event);
     if (active) throw new Error('Another song is already being separated.');
     validateSeparationInput(value);
+    const modelId = separationModel(requestedModel);
     const bytes = value as Uint8Array;
     const controller = new AbortController(); const { signal } = controller;
     active = { sender: event.sender.id, controller };
@@ -79,7 +91,7 @@ export function registerSeparation(trustedWindow: (event: IpcMainInvokeEvent) =>
     const input = path.join(folder, 'input.wav'); const output = path.join(folder, 'instrumental.wav');
     try {
       progress('loading', 0);
-      const model = await ensureModel(signal, progress);
+      const model = await ensureModel(modelId, signal, progress);
       signal.throwIfAborted();
       await mkdir(folder, { recursive: true }); await writeFile(input, bytes, { flag: 'wx' });
       signal.throwIfAborted();
@@ -89,7 +101,7 @@ export function registerSeparation(trustedWindow: (event: IpcMainInvokeEvent) =>
         await new Promise<void>((resolve, reject) => {
           const abort = () => { child.kill(); reject(signal.reason); };
           signal.addEventListener('abort', abort, { once: true });
-          child.once('spawn', () => { if (signal.aborted) abort(); else child.postMessage({ input, output, model }); });
+          child.once('spawn', () => { if (signal.aborted) abort(); else child.postMessage({ input, output, model, modelId }); });
           child.on('message', message => {
             if (message.done === true) resolve();
             else if (typeof message.error === 'string') reject(new Error(message.error));

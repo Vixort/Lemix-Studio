@@ -6,8 +6,6 @@ export const FRAMES = 256;
 export const HOP = 1024;
 export const CHUNK = HOP * (FRAMES - 1);
 export const VALID = CHUNK - FFT_SIZE;
-export const MODEL_HASH = '317554b07fe1ea5279a77f2b1520a41ea4b93432560c4ffd08792c30fddf9adc';
-export const MODEL_NAME = 'UVR-MDX-NET-Inst_HQ_3.onnx';
 
 // MDX uses a 6144-point FFT: three 2048-point transforms preserve its trained frequency grid.
 export class FFT6144 {
