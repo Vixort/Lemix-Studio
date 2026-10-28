@@ -26,16 +26,16 @@ npm.cmd start
 npm.cmd run dist
 ```
 
-ไฟล์จะอยู่ที่ `release/Lemix-Studio-0.2.0.exe` การแพ็กครั้งแรกอาจดาวน์โหลดเครื่องมือของ electron-builder เพิ่มเติม ยังไม่มีใบรับรองสำหรับลงลายเซ็นโปรแกรม
+ไฟล์จะอยู่ที่ `release/Lemix-Studio-0.3.0.exe` การแพ็กครั้งแรกอาจดาวน์โหลดเครื่องมือของ electron-builder เพิ่มเติม ยังไม่มีใบรับรองสำหรับลงลายเซ็นโปรแกรม
 
 ## เครื่องมือที่ใช้ได้
 
-- **Arrangement:** หลายแทร็กสูงสุด 24 แทร็ก แสดง waveform จากข้อมูลเสียงจริง ลากคลิปเพื่อเลื่อนตำแหน่ง โดย snap ทุก ¼ beat, seek, zoom และ loop
+- **Arrangement:** สูงสุด 24 layers และ 512 คลิป วางหลายไฟล์ใน layer เดียวได้ ลากคลิปข้าม layer, ตัดแบ่งด้วย Razor, trim ทั้งสองขอบ และทำสำเนา/ลบโดยไม่ตัดทับต้นฉบับ พร้อม waveform, snap ที่เปิด/ปิดได้, seek, zoom และ loop
 - **แต่งจังหวะ:** drum machine 16 steps มี kick, snare, hi-hat และ clap กดช่องเพื่อเปิดหรือปิดเสียง
 - **แต่งทำนอง:** note grid สำหรับ bass และ keys; pad สร้างคอร์ดบรรยากาศให้ โดยแพตเทิร์นซ้ำทุกห้องและ progression เปลี่ยนทุก 2 ห้อง
 - **นำเข้าเสียง:** เลือกไฟล์หรือลาก WAV, MP3, OGG, FLAC และไฟล์เสียงที่ Chromium รองรับลงในแอป ไฟล์ละไม่เกิน 108 MB และยาวไม่เกิน 10 นาที
 - **AI Vocal Remover:** แยกเสียงร้องออกจากเพลงด้วย MDX-Net ในเครื่อง บันทึกดนตรีเป็น WAV หรือเพิ่มเป็นแทร็กใหม่เพื่อรีมิกซ์ต่อได้ พร้อม progress และ cancel
-- **Clip tools:** เลื่อนจุดเริ่มต้น, trim จากต้นเสียง, reverse และ playback speed 0.5–2×; การเปลี่ยน speed เปลี่ยน pitch ด้วย
+- **Clip tools:** gain และ mute รายคลิป, reverse, playback speed 0.5–2× และปรับเอฟเฟกต์แยกจาก Layer mixer; การเปลี่ยน speed เปลี่ยน pitch ด้วย
 - **มิกซ์เสียง:** volume, stereo pan, mute/solo และมิกเซอร์รวมทุกแทร็ก
 - **ปรับคุณภาพและโทนเสียง:** EQ 3 ย่าน, low-pass filter, drive, compressor, convolution room reverb และ dotted delay พร้อม master limiter
 - **จัดการงาน:** ตั้งชื่อแทร็ก, duplicate/delete, undo/redo 24 ขั้นตอน และเตือนก่อนปิดงานที่ยังไม่ได้บันทึก
@@ -54,12 +54,31 @@ npm.cmd run dist
 | คีย์ลัด | การทำงาน |
 | --- | --- |
 | Space | เล่น / หยุดชั่วคราว |
+| V | เครื่องมือ Select สำหรับลากคลิป |
+| C | เครื่องมือ Razor กดบนคลิปเพื่อตัดตรงนั้น |
+| S | ตัดคลิปที่เลือกตรง playhead |
+| Ctrl / ⌘ + D | ทำสำเนาคลิปต่อท้าย |
+| Delete / Backspace | ลบเฉพาะคลิปที่เลือก |
 | Ctrl / ⌘ + S | บันทึกโปรเจกต์ |
 | Ctrl / ⌘ + O | เปิดโปรเจกต์ |
 | Ctrl / ⌘ + Z | Undo |
 | Ctrl / ⌘ + Shift + Z หรือ Ctrl+Y | Redo |
 
 Space และ Undo จะไม่แย่งการพิมพ์ข้อความจากช่องกรอกข้อมูล ขณะโฟกัสปุ่ม Space จะสั่งงานปุ่มนั้นตามปกติ
+
+## ตัดต่อคลิปแบบหลาย layers
+
+1. กด **Add layer** เพื่อสร้าง layer ว่าง หรือนำเข้าไฟล์จากแถบซ้ายเพื่อสร้าง layer พร้อมคลิป
+2. ลากไฟล์เสียงลงบนตำแหน่งใน layer เพื่อแทรกเสียงตรงนั้น หรือเลือก layer แล้วกด **Add audio** เพื่อแทรกตรง playhead
+3. ใช้ **Select (V)** ลากตัวคลิปไปทางซ้าย/ขวาหรือข้าม layer ได้ หากเลื่อนเสียงเลยขอบไทม์ไลน์ โปรแกรมจะขยายความยาวให้ภายในขีดจำกัด
+4. ใช้ **Razor (C)** กดบนจุดที่ต้องการตัด หรือวาง playhead แล้วกด **Split (S)** จะได้คลิปสองชิ้นที่อ้างอิงเสียงต้นฉบับเดียวกัน
+5. ลากขอบซ้าย/ขวาของคลิปเพื่อตัดช่วงต้น/ท้าย และลากกลับเพื่อคืนช่วงเสียงที่ซ่อนไว้ ปิด **SNAP** หากต้องการตัดละเอียดกว่า ¼ beat
+6. เลือกคลิปแล้วปรับ **Clip effects** ด้านขวาเพื่อเปลี่ยน gain, mute, EQ, filter, drive, compressor, reverb หรือ delay เฉพาะชิ้นนั้น ส่วน **Layer mixer** ปรับรวมทุกคลิปใน layer
+7. กด **Ctrl+D** เพื่อทำสำเนาคลิป หรือ **Delete** เพื่อลบคลิป ใช้ Undo/Redo ย้อนการตัด ย้าย trim และเอฟเฟกต์ได้
+
+คลิปที่ทับกันใน layer เดียวจะแสดงเป็นแถวซ้อนและเล่นผสมกัน คลิปที่ตัดหรือทำสำเนาใช้ไฟล์ต้นฉบับร่วมกัน จึงไม่เพิ่มสำเนาไฟล์เสียงในโปรเจกต์ แพตเทิร์นกลอง/โน้ตเป็น source ร่วมเช่นกัน การแก้โน้ตจะมีผลกับคลิปที่อ้างอิงแพตเทิร์นชุดนั้น ส่วนเอฟเฟกต์และ gain รายคลิปแยกกัน
+
+โปรแกรมเปิด `.lemix` รุ่นเดิมและแปลงเป็นรูปแบบ v2 ให้อัตโนมัติ โดยเก็บเสียง จังหวะเวลา reverse/speed และเอฟเฟกต์เดิมไว้ หลังบันทึกด้วยรุ่นนี้ ไฟล์ v2 จะต้องเปิดด้วยแอปรุ่น 0.3 ขึ้นไป หากยังใช้แอปรุ่นเก่าให้เก็บสำเนาไฟล์เดิมไว้ด้วย
 
 ## ทดสอบ
 
@@ -69,7 +88,7 @@ npm.cmd run typecheck
 npm.cmd run test:electron
 ```
 
-Unit tests ตรวจ project validation, mute/solo, WAV headers/interleaving/clipping และ synthesis ที่ให้ผลซ้ำได้ ส่วน Electron smoke test เปิดแอปจริง ตรวจ renderer isolation, waveform, pattern editing, mute/solo, effects, undo/redo, นำเข้าเสียง, playback meter, native save, WAV export และเปิดโปรเจกต์ที่ฝังไฟล์เสียงกลับมา
+Unit tests ตรวจการย้ายข้อมูลโปรเจกต์เก่า, source/clip references, split/trim/move, clip FX ที่ไม่ใช้ object ร่วมกัน, การวางแถวคลิปซ้อน, mute/solo, WAV และ synthesis ส่วน Electron smoke test ใช้หน้าจอจริงเพื่อตัดคลิป ย้ายข้าม layer ลากขอบทั้งสองข้าง ทำสำเนา/ลบ Undo และปรับ gain/FX รายคลิป แล้วตรวจ PCM ของ WAV ว่าช่วงเสียงและช่วงเงียบตรงกับไทม์ไลน์ รวมถึงตรวจ workflow เดิมและการเปิดไฟล์รุ่นเก่า
 
 Smoke test แสดงหน้าต่างชั่วครู่เพื่อจับภาพก่อนซ่อนหน้าต่าง ผลทดสอบและภาพหน้าจออยู่ใน `artifacts/` ซึ่งไม่ถูก commit การทดสอบวัดสัญญาณเสียงด้วยซอฟต์แวร์ ไม่ได้ยืนยันเสียงผ่านลำโพงหรืออุปกรณ์เสียงทุกแบบ
 
@@ -81,7 +100,7 @@ Smoke test แสดงหน้าต่างชั่วครู่เพื
 2. กด **Vocal Remover** ในแถบซ้าย หรือ **Remove vocals** ใน editor
 3. กด **Remove vocals** เพื่อเริ่มทำงาน ครั้งแรกโปรแกรมจะดาวน์โหลดโมเดลประมาณ **67 MB** และตรวจ SHA-256 ก่อนใช้ ต้องมีอินเทอร์เน็ตในครั้งนี้
 4. รอแถบความคืบหน้า ระหว่างประมวลผลกด **Cancel separation** หรือ Escape เพื่อยกเลิกได้ โดยไม่เปลี่ยนไฟล์ต้นฉบับ
-5. เลือก **Save WAV** เพื่อบันทึกดนตรีทั้งเพลง หรือ **Add instrumental track** เพื่อเพิ่มเข้าไทม์ไลน์ โปรแกรมจะ mute ต้นฉบับ รักษา offset, trim, speed, reverse และเอฟเฟกต์เดิมไว้ในแทร็กใหม่ พร้อมขยายไทม์ไลน์เท่าที่จำเป็น ใช้ Undo กลับสู่มิกซ์ก่อนเพิ่มแทร็กได้
+5. เลือก **Save WAV** เพื่อบันทึกดนตรีทั้งเพลง หรือ **Add instrumental track** เพื่อเพิ่ม layer พร้อมคลิปใหม่ โปรแกรมจะ mute เฉพาะคลิปต้นฉบับที่เลือก รักษา offset, trim, ความยาว, speed, reverse, gain และเอฟเฟกต์ไว้ โดยไม่ mute คลิปอื่นใน layer เดิม ใช้ Undo กลับสู่มิกซ์ก่อนเพิ่มคลิปได้
 
 การแยกใช้เสียงต้นฉบับเต็มไฟล์ ก่อนผ่าน clip tools และเอฟเฟกต์ ส่วน Save WAV ในเครื่องมือนี้ส่งออก instrumental เต็มไฟล์ หากต้องการรวมเอฟเฟกต์และแทร็กอื่นให้ใช้ Export WAV ของสตูดิโอแทน
 
@@ -105,6 +124,7 @@ node scripts/test-electron.mjs --packaged --separation
 electron/          Main process, native save และ preload bridge ที่จำกัดขอบเขต
 electron/separation*.ts  ดาวน์โหลดโมเดล, worker และ STFT สำหรับ AI Vocal Remover
 src/model.ts       ชนิดข้อมูล, validation, project defaults และ WAV encoder
+src/timeline.ts    คำนวณช่วงคลิป, split/trim/move และแถวของคลิปที่ทับกัน
 src/synthesis.ts   สร้างกลอง bass keys และ pad ด้วย PCM
 src/audio.ts       Web Audio graph, transport และ offline rendering
 src/main.ts        หน้าจอ, เครื่องมือแต่งเพลง และประวัติ undo/redo
@@ -115,4 +135,4 @@ scripts/           Dev launcher และการทดสอบ Electron จ�
 
 Renderer เปิด `contextIsolation` และ sandbox ปิด Node integration และ remote navigation มี CSP และตรวจข้อมูลก่อนบันทึกผ่าน IPC ตาม [แนวทางความปลอดภัยของ Electron](https://www.electronjs.org/docs/latest/tutorial/security/)
 
-รุ่นนี้เป็นสตูดิโอเริ่มต้นสำหรับแต่งลูปและรีมิกซ์ ยังไม่มี VST/AU, บันทึกไมโครโฟน, MIDI hardware, time-stretch แบบรักษา pitch, automation หรือแยก stems เป็น drums/bass/guitar แยกกัน หนึ่งแทร็กมีหนึ่งคลิป/แพตเทิร์น และยังไม่มี autosave จึงควรบันทึกโปรเจกต์เป็นระยะ
+รุ่นนี้ยังไม่มี crossfade อัตโนมัติ, automation, VST/AU, บันทึกไมโครโฟน, MIDI hardware, time-stretch แบบรักษา pitch หรือแยก stems เป็น drums/bass/guitar แยกกัน และยังไม่มี autosave จึงควรบันทึกโปรเจกต์เป็นระยะ
