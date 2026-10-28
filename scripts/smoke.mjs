@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron';
+import { app, dialog, shell } from 'electron';
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -10,6 +10,8 @@ await mkdir(output, { recursive: true });
 app.setPath('userData', path.join(output, 'test-profile'));
 dialog.showSaveDialog = async (_window, options) => ({ canceled: false, filePath: path.join(output, options.filters[0].extensions[0] === 'wav' ? 'test-mix.wav' : 'test-project.lemix') });
 dialog.showMessageBoxSync = () => 1;
+const openedWebsites = [];
+shell.openExternal = async url => { openedWebsites.push(url); };
 const testRoformer = process.argv.includes('--roformer');
 const testSeparation = testRoformer || process.argv.includes('--separation') || process.argv.includes('--speech');
 const timeout = setTimeout(() => { console.error('Electron smoke test timed out'); app.exit(1); }, testRoformer ? 20 * 60 * 1000 : testSeparation ? 300000 : 60000);
@@ -288,7 +290,20 @@ app.on('browser-window-created', (_event, window) => {
         await click('[data-action="vocal-remover"]');
         assert.ok(await run(`document.querySelector('.vocal-empty')?.textContent.includes('Select an imported audio track')`));
         assert.equal(await run(`document.querySelector('#separation-model').value`),'bs-roformer');
-        assert.equal(await run(`document.querySelector('#separation-model').options.length`),2);
+        assert.equal(await run(`document.querySelector('#separation-model').options.length`),7);
+        await run(`{const select=document.querySelector('#separation-context');select.value='8';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+        assert.ok(await run(`document.querySelector('.vocal-footnote').textContent.includes('8-second context')`));
+        await run(`{const select=document.querySelector('#separation-context');select.value='4';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+        for(const [id,query]of[['mvsep-bs-124','sep_type=40'],['mvsep-ensemble','sep_type=26']]){
+          const before=openedWebsites.length;
+          await run(`{const select=document.querySelector('#separation-model');select.value=${JSON.stringify(id)};select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+          assert.equal(openedWebsites.length,before,'Selecting an online model opened a website automatically');
+          assert.equal(await run(`!!document.querySelector('[data-action="start-separation"]')`),false);
+          assert.ok(await run(`document.querySelector('.vocal-footnote').textContent.includes('No song is sent')`));
+          await click('[data-action="open-mvsep"]'); await waitFor(`!document.body.classList.contains('busy')`,'Website action did not finish');
+          assert.ok(openedWebsites.at(-1).includes(query));
+        }
+        assert.equal(await run(`window.lemix.openSeparationWebsite('https://attacker.invalid').then(()=>false,e=>e.message.includes('Unknown MVSEP model'))`),true);
         await run(`{const select=document.querySelector('#separation-model');select.value='mdx';select.dispatchEvent(new Event('change',{bubbles:true}));}`);
         await click('[data-action="close-vocal"]');
         await run(`document.querySelectorAll('.track-name')[4].click(); const mute=document.querySelectorAll('.track-header [data-mute]')[4]; if(mute.getAttribute('aria-pressed')==='true')mute.click()`);
@@ -350,6 +365,25 @@ app.on('browser-window-created', (_event, window) => {
           assert.equal(await run(`!!document.querySelector('.vocal-result')`),false,'Changing models left a stale result');
           assert.equal(await run(`window.lemix.removeVocals(Uint8Array.from(atob(${JSON.stringify(roformer.toString('base64'))}),c=>c.charCodeAt(0)),'__proto__').then(()=>false,e=>e.message.includes('Unknown vocal separation model'))`),true);
           console.log('PASS: BS-RoFormer inference, model switching, WAV, cancellation and model ID validation');
+          const outputs = {};
+          for(const id of ['bs-roformer-full','mel-roformer','ensemble-local']){
+            await run(`{const select=document.querySelector('#separation-model');select.value=${JSON.stringify(id)};select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+            assert.equal(await run(`!!document.querySelector('.vocal-result')`),false);
+            await click('[data-action="start-separation"]');
+            await waitFor(`!document.body.classList.contains('busy')`,`${id} did not finish`);
+            assert.ok(await run(`!!document.querySelector('.vocal-result')`),await run(`document.querySelector('.vocal-error')?.textContent||'Missing model result'`));
+            await click('[data-action="save-instrumental"]'); await waitFor(`!document.body.classList.contains('busy')`,'Model result did not save');
+            outputs[id]=await readFile(path.join(output,'test-mix.wav'));
+            assert.equal(outputs[id].length,instrumental.length); assert.ok(outputs[id].subarray(44).some(value=>value!==0));
+            await writeFile(path.join(output,`${id}-instrumental.wav`),outputs[id]);
+            console.log(`PASS: real ${id} inference and complete WAV`);
+          }
+          for(let i=44;i<outputs['ensemble-local'].length;i+=2){
+            const expected=(outputs['bs-roformer-full'].readInt16LE(i)+outputs['mel-roformer'].readInt16LE(i))/2;
+            assert.ok(Math.abs(outputs['ensemble-local'].readInt16LE(i)-expected)<=2,'Ensemble did not average its member models');
+          }
+          assert.equal(await run(`window.lemix.removeVocals(Uint8Array.from(atob(${JSON.stringify(roformer.toString('base64'))}),c=>c.charCodeAt(0)),'mel-roformer',999).then(()=>false,e=>e.message.includes('4 or 8 second'))`),true);
+          window.showInactive();await sleep(400);await writeFile(path.join(output,'vocal-model-library.png'),(await window.webContents.capturePage()).toPNG());window.hide();
           const songArgument=process.argv.indexOf('--song');
           if(songArgument>=0){
             const songPath=process.argv[songArgument+1]; assert.ok(songPath,'Missing --song path');
