@@ -1,14 +1,42 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { audible, createTrack, demoProject, duration, encodeWav, parseProject, maxBars } from '../src/model.ts';
+import { audible, createSource, createInstrument, cloneProject, demoProject, duration, encodeWav, parseProject, maxBars } from '../src/model.ts';
 import { synthesize } from '../src/synthesis.ts';
 
 test('demo round trips with independent patterns and valid duration', () => {
   const project = demoProject();
   assert.deepEqual(parseProject(JSON.stringify(project)), project);
   assert.equal(duration(project), 8 * 4 * 60 / 112);
-  project.tracks[0].steps[0][0] = false;
-  assert.equal(project.tracks[1].steps[0][0], true);
+  project.sources[0].steps[0][0] = false;
+  assert.equal(project.sources[1].steps[0][0], true);
+});
+
+test('legacy projects preserve source audio, timing, channel effects and mute when migrated', () => {
+  const p = demoProject();
+  const legacy = { ...p, version: 1, sources: undefined, tracks: p.tracks.map((t, i) => ({ ...p.sources[i], ...t, clips: undefined, offset: 2, trim: 0.3, rate: 1.25, reverse: true })) };
+  legacy.tracks[0].muted = true;
+  const migrated = parseProject(JSON.stringify(legacy));
+  assert.equal(migrated.version, 2); assert.equal(migrated.sources.length, 4);
+  const c = migrated.tracks[0].clips[0];
+  assert.equal(c.offset, 2); assert.equal(c.trim, 0.3); assert.equal(c.rate, 1.25); assert.equal(c.reverse, true);
+  assert.equal(c.length, null); assert.equal(c.effects.cutoff, 20000);
+  assert.deepEqual(migrated.tracks[0].effects, p.tracks[0].effects);
+  assert.equal(migrated.tracks[0].muted, true);
+  assert.deepEqual(migrated.sources[0].steps, p.sources[0].steps);
+});
+
+test('clip and source references are validated and history does not share mutable FX or patterns', () => {
+  const p = demoProject(); const copy = cloneProject(p);
+  copy.tracks[0].clips[0].effects.low = 4; copy.sources[0].steps[0][0] = false;
+  assert.equal(p.tracks[0].clips[0].effects.low, 0); assert.equal(p.sources[0].steps[0][0], true);
+  for (const mutate of [
+    (p: any) => p.tracks[0].clips[0].sourceId = crypto.randomUUID(),
+    (p: any) => p.tracks[0].clips[0].length = -1,
+    (p: any) => p.tracks[0].clips[0].gain = 99,
+    (p: any) => p.tracks[1].clips[0].id = p.tracks[0].clips[0].id,
+    (p: any) => p.sources[1].id = p.sources[0].id,
+    (p: any) => p.tracks[0].clips = null,
+  ]) { const broken = demoProject(); mutate(broken); assert.throws(() => parseProject(JSON.stringify(broken))); }
 });
 
 test('untrusted projects reject broken structure, duplicate IDs and hostile values', () => {
@@ -16,14 +44,14 @@ test('untrusted projects reject broken structure, duplicate IDs and hostile valu
     (p: any) => p.bpm = 0, (p: any) => p.bars = 1.5,
     (p: any) => p.tracks[0].color = 'red;display:none',
     (p: any) => p.tracks[0].effects.delay = 9,
-    (p: any) => p.tracks[0].steps[0] = [true],
-    (p: any) => p.tracks[0].notes[0] = 0.5,
+    (p: any) => p.sources[0].steps[0] = [true],
+    (p: any) => p.sources[0].notes[0] = 0.5,
     (p: any) => p.tracks[1].id = p.tracks[0].id,
     (p: any) => p.tracks[0].id = '\" onmouseover=\"alert(1)',
-    (p: any) => p.tracks[0].offset = 127,
-    (p: any) => p.tracks[0].kind = 'unknown',
-    (p: any) => p.tracks[0].trim = -1,
-    (p: any) => { p.tracks[0].kind = 'audio'; p.tracks[0].audio = 'file:///etc/passwd'; },
+    (p: any) => p.tracks[0].clips[0].offset = 127,
+    (p: any) => p.sources[0].kind = 'unknown',
+    (p: any) => p.tracks[0].clips[0].trim = -1,
+    (p: any) => { p.sources[0].kind = 'audio'; p.sources[0].audio = 'file:///etc/passwd'; },
   ]) {
     const project = demoProject(); mutate(project);
     assert.throws(() => parseProject(JSON.stringify(project)));
@@ -33,7 +61,7 @@ test('untrusted projects reject broken structure, duplicate IDs and hostile valu
 });
 
 test('solo respects mute and mutes other tracks', () => {
-  const tracks = [createTrack('bass', 0), createTrack('keys', 1)];
+  const tracks = [createInstrument('bass', 0).track, createInstrument('keys', 1).track];
   assert.equal(audible(tracks, tracks[0]), true);
   tracks[1].solo = true;
   assert.equal(audible(tracks, tracks[0]), false);
@@ -68,7 +96,7 @@ test('WAV has correct stereo headers, interleaving, clipping and finite samples'
 
 test('synthesized patterns produce repeatable finite audio and honor empty notes/steps', () => {
   for (const kind of ['drums', 'bass', 'keys', 'pad'] as const) {
-    const track = createTrack(kind, 0);
+    const track = createSource(kind);
     const samples = synthesize(track, 120, 1, 8000);
     assert.equal(samples.length, 16000);
     assert.ok(samples.every(Number.isFinite));

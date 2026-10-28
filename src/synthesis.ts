@@ -1,6 +1,6 @@
-import type { Track } from './model.ts';
+import type { Source } from './model.ts';
 
-export function synthesize(track: Track, bpm: number, bars: number, sampleRate = 44100): Float32Array {
+export function synthesize(track: Source, bpm: number, bars: number, sampleRate = 44100): Float32Array {
   const beat = 60 / bpm;
   const pcm = new Float32Array(Math.ceil(bars * 4 * beat * sampleRate));
   let seed = 73;

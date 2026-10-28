@@ -68,7 +68,7 @@ app.on('browser-window-created', (_event, window) => {
       await run(`document.querySelectorAll('[data-solo]')[1].click()`);
       assert.equal(await run(`document.querySelectorAll('[data-solo]')[1].getAttribute('aria-pressed')`), 'true');
       await run(`document.querySelectorAll('[data-solo]')[1].click()`);
-      await control('volume', '0.4'); await control('fx.low', '3'); await control('fx.drive', '0.2');
+      await click('[data-inspector="track"]'); await control('volume', '0.4'); await control('fx.low', '3'); await control('fx.drive', '0.2');
       await click('[data-action="save"]');
       await waitFor(`document.querySelector('#save-state').textContent === 'Ready to create'`, 'Project did not save');
       const saved = JSON.parse(await readFile(path.join(output, 'test-project.lemix'), 'utf8'));
@@ -103,7 +103,7 @@ app.on('browser-window-created', (_event, window) => {
       assert.ok(peak > 1000, `Silent export: peak ${peak}`);
       await click('[data-action="save"]'); await waitFor(`!document.body.classList.contains('busy')`, 'Save did not complete');
       const withAudio = await readFile(path.join(output, 'test-project.lemix'), 'utf8');
-      assert.equal(JSON.parse(withAudio).tracks[4].audio, wave.toString('base64'));
+      assert.equal(JSON.parse(withAudio).sources.find(s=>s.id===JSON.parse(withAudio).tracks[4].clips[0].sourceId).audio, wave.toString('base64'));
       await click('[data-action="delete"]'); assert.equal(await count(), 4);
       await run(`{ window.confirm=()=>true; const files=new DataTransfer(); files.items.add(new File([${JSON.stringify(withAudio)}],'roundtrip.lemix')); const input=document.querySelector('#project-file'); input.files=files.files; input.dispatchEvent(new Event('change',{bubbles:true})); }`);
       await waitFor(`document.querySelectorAll('.track-header').length===5 && !document.body.classList.contains('busy')`, 'Project did not reopen with embedded audio');
@@ -144,13 +144,13 @@ app.on('browser-window-created', (_event, window) => {
         assert.ok(instrumental.subarray(44).some(byte => byte !== 0), 'AI returned a silent instrumental');
         await click('[data-action="add-instrumental"]');
         await waitFor(`document.querySelectorAll('.track-header').length===6 && !document.body.classList.contains('busy')`, 'Instrumental track was not added');
-        assert.equal(await run(`document.querySelectorAll('.track-header [data-mute]')[4].getAttribute('aria-pressed')`), 'true');
+        assert.equal(await run(`document.querySelectorAll('.track-header [data-mute]')[4].getAttribute('aria-pressed')`), 'false');
         await click('[data-action="save"]'); await waitFor(`!document.body.classList.contains('busy')`, 'Stem project did not save');
         const stemProject = JSON.parse(await readFile(path.join(output, 'test-project.lemix'), 'utf8'));
-        assert.equal(stemProject.tracks[4].audio, wave.toString('base64'));
-        assert.equal(stemProject.tracks[5].audio, instrumental.toString('base64'));
-        assert.equal(stemProject.tracks[5].reverse, true); assert.equal(stemProject.tracks[5].rate, 1.25);
-        assert.equal(stemProject.tracks[5].trim, 0.1); assert.equal(stemProject.tracks[5].offset, 0.25);
+        assert.equal(stemProject.sources.find(s=>s.id===stemProject.tracks[4].clips[0].sourceId).audio, wave.toString('base64'));
+        assert.equal(stemProject.sources.find(s=>s.id===stemProject.tracks[5].clips[0].sourceId).audio, instrumental.toString('base64'));
+        assert.equal(stemProject.tracks[5].clips[0].reverse, true); assert.equal(stemProject.tracks[5].clips[0].rate, 1.25);
+        assert.equal(stemProject.tracks[5].clips[0].trim, 0.1); assert.equal(stemProject.tracks[5].clips[0].offset, 0.25);
         await click('[data-action="undo"]'); assert.equal(await count(), 5);
         assert.equal(await run(`document.querySelectorAll('.track-header [data-mute]')[4].getAttribute('aria-pressed')`), 'false');
         await run(`document.querySelectorAll('.track-name')[4].click()`);

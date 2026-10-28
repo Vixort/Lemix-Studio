@@ -1,4 +1,6 @@
 const paths: Record<string, string> = {
+  scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8 8 13 13M8 16 21 3"/>',
+  cursor: '<path d="m4 3 5 18 3-7 7-3z"/>',
   play: '<path d="m8 5 11 7-11 7z"/>',
   pause: '<path d="M8 5v14M16 5v14"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
