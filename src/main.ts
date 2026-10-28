@@ -1,6 +1,6 @@
 import './style.css';
 import { AudioEngine } from './audio.ts';
-import { COLORS, DRUMS, INSTRUMENTS, MAX_AUDIO_BYTES, MAX_PROJECT_BYTES, createSource, createLayer, createInstrument, createClip, cloneClip, cloneProject, pruneSources, neutralEffects, demoProject, duration, parseProject, maxBars, encodeWav } from './model.ts';
+import { COLORS, DRUMS, INSTRUMENTS, CLEANUP_PRESETS, defaultCleanup, MAX_AUDIO_BYTES, MAX_PROJECT_BYTES, createSource, createLayer, createInstrument, createClip, cloneClip, cloneProject, pruneSources, neutralEffects, demoProject, duration, parseProject, maxBars, encodeWav } from './model.ts';
 import type { Clip, Effects, Project, Source, Track, TrackKind } from './model.ts';
 import { icon } from './icons.ts';
 import { clipDuration, clipCount, layoutClips, moveClip, snapBeat, splitClip, trimClip } from './timeline.ts';
@@ -12,6 +12,7 @@ let selected = project.tracks[0].id;
 let selectedClip = project.tracks[0].clips[0].id;
 let inspectorMode: 'track' | 'clip' = 'track';
 let timelineTool: 'select' | 'split' = 'select';
+let libraryTab: 'sounds' | 'effects' = 'sounds';
 let snap = true;
 let revealSelection = false;
 let importTarget: { trackId: string; beat: number } | undefined;
@@ -57,7 +58,7 @@ function changed(rebuild = false) {
   document.title = `• ${project.name} — Lemix Studio`;
   document.querySelector('#save-state')!.textContent = 'Unsaved changes';
   engine.updateMix(project);
-  if (rebuild && engine.playing) {
+  if (rebuild && (engine.playing || engine.preparing)) {
     clearTimeout(restartTimer);
     restartTimer = setTimeout(() => { cursor = engine.position(); void play(); }, 120);
   }
@@ -100,7 +101,7 @@ function render() {
     <header class="topbar">
       <a class="brand" href="#" aria-label="Lemix Studio">${icon('wave')}<span>lemix<span class="brand-dot">.</span></span><small>STUDIO</small></a>
       <div class="project-heading"><input id="project-name" aria-label="Project name" maxlength="80" value="${esc(project.name)}" /><span><i class="status-dot"></i><span id="save-state">${dirty ? 'Unsaved changes' : 'Ready to create'}</span></span></div>
-      <div class="top-actions">${button('new', 'plus', 'New project')}${button('open', 'folder', 'Open project (Ctrl+O)')}${button('save', 'save', 'Save project (Ctrl+S)')}<span class="divider"></span>${button('undo', 'undo', 'Undo (Ctrl+Z)', history.length ? '' : 'disabled')}${button('redo', 'redo', 'Redo (Ctrl+Shift+Z)', future.length ? '' : 'disabled')}<button class="export-button" data-action="export">${icon('export')} Export WAV</button></div>
+      <div class="top-actions">${button('new', 'plus', 'New project')}${button('open', 'folder', 'Open project (Ctrl+O)')}${button('save', 'save', 'Save project (Ctrl+S)')}<span class="divider"></span>${button('undo', 'undo', 'Undo (Ctrl+Z)', history.length ? '' : 'disabled')}${button('redo', 'redo', 'Redo (Ctrl+Shift+Z)', future.length ? '' : 'disabled')}<button class="export-button" data-action="export" ${engine.preparing ? 'disabled' : ''}>${icon('export')} Export WAV</button></div>
     </header>
     <div class="studio">
       <aside class="browser">
@@ -108,10 +109,11 @@ function render() {
         <button class="nav-item active" data-action="arrangement">${icon('sliders')} Arrangement <span>01</span></button>
         <button class="nav-item" data-action="mixer">${icon('headphones')} Mixer <span>${project.tracks.length}</span></button>
         <button class="nav-item ai-tool" data-action="vocal-remover">${icon('spark')} Vocal Remover <span>AI</span></button>
-        <div class="browser-title">SOUND LIBRARY <span class="pill">${Object.keys(INSTRUMENTS).length} SOUNDS</span></div>
-        <label class="search">${icon('search')}<input id="search" placeholder="Find your sound…" aria-label="Search instruments" /></label>
+        <div class="browser-title">${libraryTab === 'sounds' ? 'SOUND LIBRARY' : 'AUDIO REPAIR'} <span class="pill">${libraryTab === 'sounds' ? `${Object.keys(INSTRUMENTS).length} SOUNDS` : 'DRAG & DROP'}</span></div>
+        <div class="library-tabs"><button data-library="sounds" class="${libraryTab === 'sounds' ? 'active' : ''}">${icon('keys')} Sounds</button><button data-library="effects" class="${libraryTab === 'effects' ? 'active' : ''}">${icon('spark')} Audio FX</button></div>
+        <label class="search">${icon('search')}<input id="search" placeholder="${libraryTab === 'sounds' ? 'Find your sound…' : 'Find an effect…'}" aria-label="Search library" /></label>
         <div class="library">
-          ${Object.entries(INSTRUMENTS).map(([kind, instrument], i) => `<button class="sound-card" data-add="${kind}" data-search="${instrument.name.toLowerCase()}" style="--accent:${COLORS[i % COLORS.length]}"><span class="sound-art">${icon(instrument.icon)}</span><span><strong>${instrument.name}</strong><small>${instrument.description}</small></span><span class="sound-add">+</span><span class="sound-number">${String(i + 1).padStart(2, '0')}</span></button>`).join('')}
+          ${libraryTab === 'sounds' ? Object.entries(INSTRUMENTS).map(([kind, instrument], i) => `<button class="sound-card" data-add="${kind}" data-search="${instrument.name.toLowerCase()}" style="--accent:${COLORS[i % COLORS.length]}"><span class="sound-art">${icon(instrument.icon)}</span><span><strong>${instrument.name}</strong><small>${instrument.description}</small></span><span class="sound-add">+</span><span class="sound-number">${String(i + 1).padStart(2, '0')}</span></button>`).join('') : Object.entries(CLEANUP_PRESETS).map(([id, preset]) => `<button draggable="true" class="sound-card repair-card" data-cleanup="${id}" data-search="${preset.name.toLowerCase()}" style="--accent:#a9d9bc" title="Drag onto a clip, or click to apply to the selected clip"><span class="sound-art">${icon(id === 'declick' ? 'wave' : 'spark')}</span><span><strong>${preset.name}</strong><small>${preset.description}</small></span><span class="sound-add">↗</span></button>`).join('') + '<p class="repair-help">Drag an effect onto a clip.<br/>Or select a clip, then click an effect.<br/><small>Original audio stays untouched.</small></p>'}
         </div>
         <button class="import-area" data-action="import">${icon('import')}<strong>Bring your own sound</strong><span>Import WAV, MP3, OGG or FLAC</span><small>or drop an audio file anywhere</small></button>
         <div class="browser-bottom"><span class="online-dot"></span> ALL LOCAL. ALL YOURS.<p>No cloud. Just your creativity.</p></div>
@@ -119,12 +121,12 @@ function render() {
       <main>
         <div class="workspace-heading"><div><span class="eyebrow">LET THE IDEAS FLOW</span><h1>Your next late-night masterpiece<span>.</span></h1></div>${button('help', 'help', 'Shortcuts and help')}</div>
         <section class="transport" aria-label="Transport">
-          <div class="transport-buttons">${button('stop', 'stop', 'Stop and return to start')}<button class="play-button ${engine.playing ? 'playing' : ''}" data-action="play" aria-label="${engine.playing ? 'Pause' : 'Play'}" title="Play / pause (Space)">${icon(engine.playing ? 'pause' : 'play')}</button>${button('loop', 'loop', 'Loop arrangement', `aria-pressed="${project.loop}"`)}</div>
+          <div class="transport-buttons">${button('stop', 'stop', 'Stop and return to start')}<button class="play-button ${engine.playing || engine.preparing ? 'playing' : ''}" data-action="play" aria-label="${engine.playing || engine.preparing ? 'Pause' : 'Play'}" title="Play / pause (Space)">${icon(engine.playing || engine.preparing ? 'pause' : 'play')}</button>${button('loop', 'loop', 'Loop arrangement', `aria-pressed="${project.loop}"`)}</div>
           <div class="time-display"><strong id="time">${format(cursor)}</strong><span id="beat-position">BAR 01 · BEAT 1</span></div>
           <label class="tempo"><input id="bpm" type="number" aria-label="Tempo BPM" min="40" max="240" value="${project.bpm}" /><span>BPM</span></label>
           <div class="signature"><strong>4 / 4</strong><span>TIME SIGNATURE</span></div>
           <label class="length"><select id="bars" aria-label="Arrangement length">${Array.from({ length: maxBars(project.bpm) }, (_, i) => i + 1).map(n => `<option value="${n}" ${project.bars === n ? 'selected' : ''}>${n} bars</option>`).join('')}</select><span>LENGTH</span></label>
-          <div class="transport-end"><span class="live-dot"></span> ${engine.playing ? 'PLAYING' : 'STUDIO READY'}<div class="mini-level"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+          <div class="transport-end"><span class="live-dot"></span> ${engine.preparing ? 'PREPARING AUDIO' : engine.playing ? 'PLAYING' : 'STUDIO READY'}<div class="mini-level"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
         </section>
         <section class="arrangement" aria-label="Multitrack arrangement">
           <div class="panel-heading"><div><strong>Arrangement</strong><span class="count">${String(project.tracks.length).padStart(2, '0')} TRACKS</span></div><div class="arrangement-tools"><button class="snap-indicator" data-action="snap" aria-pressed="${snap}">SNAP ${snap ? "ON" : "OFF"}</button><label class="zoom-label">−<input id="zoom" aria-label="Timeline zoom" type="range" min="1" max="12" step="0.25" value="${zoom}"/>+</label><button class="text-button" data-action="add-layer">${icon('plus')} Add layer</button></div></div>
@@ -173,8 +175,9 @@ function renderLane(t: Track) {
     const s = project.sources.find(s => s.id === c.sourceId)!;
     const length = Math.max(0, Math.min(clipDuration(c, sourceDuration(s.id)), duration(project) - c.offset * 60 / project.bpm));
     const fx = c.effects;
+    const repaired = c.cleanup?.enabled && (c.cleanup.noise || c.cleanup.declick);
     const hasFX = fx.low || fx.mid || fx.high || fx.cutoff < 20000 || fx.drive || fx.reverb || fx.delay || fx.compression;
-    return `<div class="audio-clip ${c.id === selectedClip ? 'clip-selected' : ''} ${t.muted || c.muted ? 'clip-muted' : ''}" data-clip="${c.id}" data-select-clip="${c.id}" role="button" tabindex="0" aria-label="Select clip ${esc(c.name)}" style="left:${c.offset / (project.bars * 4) * 100}%;width:${Math.max(0.05, length / duration(project) * 100)}%;top:${8 + layout.rows.get(c.id)! * 60}px;height:52px;bottom:auto"><span>${icon(kindIcon(s.kind))}${esc(c.name)}<small>${hasFX ? 'FX · ' : ''}${c.reverse ? 'REV' : s.kind === 'audio' ? 'AUDIO' : 'LOOP'}</small></span><canvas data-wave="${c.id}"></canvas><button class="trim-handle left" data-trim="left" aria-label="Trim start of ${esc(c.name)}"></button><button class="trim-handle right" data-trim="right" aria-label="Trim end of ${esc(c.name)}"></button></div>`;
+    return `<div class="audio-clip ${c.id === selectedClip ? 'clip-selected' : ''} ${t.muted || c.muted ? 'clip-muted' : ''}" data-clip="${c.id}" data-select-clip="${c.id}" role="button" tabindex="0" aria-label="Select clip ${esc(c.name)}" style="left:${c.offset / (project.bars * 4) * 100}%;width:${Math.max(0.05, length / duration(project) * 100)}%;top:${8 + layout.rows.get(c.id)! * 60}px;height:52px;bottom:auto"><span>${icon(kindIcon(s.kind))}${esc(c.name)}<small>${repaired ? 'REPAIR · ' : ''}${hasFX ? 'FX · ' : ''}${c.reverse ? 'REV' : s.kind === 'audio' ? 'AUDIO' : 'LOOP'}</small></span><canvas data-wave="${c.id}"></canvas><button class="trim-handle left" data-trim="left" aria-label="Trim start of ${esc(c.name)}"></button><button class="trim-handle right" data-trim="right" aria-label="Trim end of ${esc(c.name)}"></button></div>`;
   }).join('')}${t.clips.length ? '' : '<span class="lane-placeholder">Drop audio or drag a clip here</span>'}</div>`;
 }
 
@@ -184,11 +187,29 @@ function inspector(t: Track) {
   return `<div class="inspector-mode"><button data-inspector="clip" class="${clipMode ? 'active' : ''}" ${c ? '' : 'disabled'}>Clip effects</button><button data-inspector="track" class="${clipMode ? '' : 'active'}">Layer mixer</button></div><div class="selected-channel" style="--accent:${t.color}"><div class="selected-icon">${icon(kindIcon(trackKind(t)))}</div><div><input id="${clipMode ? 'clip-name' : 'track-name'}" aria-label="${clipMode ? 'Clip' : 'Track'} name" maxlength="80" value="${esc(clipMode ? c.name : t.name)}"/><small>${clipMode ? 'SELECTED CLIP' : 'LAYER'} / ${t.id.slice(0, 4).toUpperCase()}</small></div></div>
     <div class="inspector-actions">${button(clipMode ? 'duplicate-clip' : 'duplicate', 'duplicate', clipMode ? 'Duplicate selected clip' : 'Duplicate selected layer')}${button(clipMode ? 'delete-clip' : 'delete', 'trash', clipMode ? 'Delete selected clip' : 'Delete selected layer')}<button class="text-button" data-action="reset-fx">${icon('reset')} Reset FX</button></div>
     <div class="inspector-scroll">
+    ${clipMode ? cleanupControls(c) : ''}
     <div class="control-section"><div class="section-title">${clipMode ? 'CLIP GAIN' : 'CHANNEL'} <span>01</span></div>${clipMode ? slider('Clip gain', 'gain', c.gain, 0, 2, 0.01, `${Math.round(c.gain * 100)}%`) + `<button class="reverse-button" data-action="mute-clip" aria-pressed="${c.muted}">Mute this clip <span>${c.muted ? 'ON' : 'OFF'}</span></button>` : slider('Volume', 'volume', t.volume, 0, 1, 0.01, `${Math.round(t.volume * 100)}%`) + slider('Pan', 'pan', t.pan, -1, 1, 0.01, t.pan === 0 ? 'Center' : `${Math.round(Math.abs(t.pan) * 100)}${t.pan < 0 ? 'L' : 'R'}`)}</div>
     <div class="control-section"><div class="section-title">EQUALIZER <span class="fx-dot"></span></div><div class="eq-visual"><svg viewBox="0 0 220 44" aria-hidden="true"><path class="eq-grid" d="M0 11h220M0 22h220M0 33h220M44 0v44M88 0v44M132 0v44M176 0v44"/><path id="eq-curve" d="M0 ${22 - fx.low} Q55 ${22 - fx.low} 90 ${22 - fx.mid} T150 ${22 - fx.high} T220 ${22 - fx.high}"/></svg></div>${slider('Low · 200 Hz', 'fx.low', fx.low, -12, 12, 0.5, `${fx.low > 0 ? '+' : ''}${fx.low} dB`)}${slider('Mid · 1.2 kHz', 'fx.mid', fx.mid, -12, 12, 0.5, `${fx.mid > 0 ? '+' : ''}${fx.mid} dB`)}${slider('High · 5 kHz', 'fx.high', fx.high, -12, 12, 0.5, `${fx.high > 0 ? '+' : ''}${fx.high} dB`)}</div>
     <div class="control-section"><div class="section-title">SOUND SHAPING <span class="fx-dot"></span></div>${slider('Low-pass filter', 'fx.cutoff', fx.cutoff, 100, 20000, 100, `${(fx.cutoff / 1000).toFixed(1)} kHz`)}${slider('Drive', 'fx.drive', fx.drive, 0, 1, 0.01, `${Math.round(fx.drive * 100)}%`)}${slider('Compression', 'fx.compression', fx.compression, 0, 1, 0.01, `${Math.round(fx.compression * 100)}%`)}</div>
     <div class="control-section"><div class="section-title">SPACE & TEXTURE <span class="fx-dot"></span></div>${slider('Room reverb', 'fx.reverb', fx.reverb, 0, 1, 0.01, `${Math.round(fx.reverb * 100)}%`)}${slider('Dotted delay', 'fx.delay', fx.delay, 0, 1, 0.01, `${Math.round(fx.delay * 100)}%`)}</div>
     ${c ? `<div class="control-section"><div class="section-title">CLIP TOOLS <span>02</span></div>${slider('Start offset · beats', 'offset', c.offset, 0, project.bars * 4 - 0.001, 0.001, `${c.offset.toFixed(2)}`)}${slider('Trim start · seconds', 'trim', c.trim, 0, Math.max(c.trim, sourceDuration(c.sourceId) - 0.01), 0.01, `${c.trim.toFixed(2)} s`)}${slider('Duration · seconds', 'length', clipDuration(c, sourceDuration(c.sourceId)), 0.01, Math.max(0.01, (sourceDuration(c.sourceId) - c.trim) / c.rate), 0.01, `${clipDuration(c, sourceDuration(c.sourceId)).toFixed(2)} s`)}${slider('Playback speed', 'rate', c.rate, 0.5, 2, 0.05, `${c.rate.toFixed(2)}×`)}<button class="reverse-button ${c.reverse ? 'active' : ''}" data-action="reverse" aria-pressed="${c.reverse}">${icon('undo')} Reverse audio <span>${c.reverse ? 'ON' : 'OFF'}</span></button></div>` : ''}</div>`;
+}
+
+function cleanupControls(c: Clip) {
+  const settings = c.cleanup;
+  return `<div class="control-section repair-controls"><div class="section-title">AUDIO REPAIR <span>${settings ? settings.enabled ? 'ON' : 'BYPASSED' : 'OFF'}</span></div>${settings ? `${slider('Noise reduction', 'cleanup.noise', settings.noise, 0, 1, 0.01, `${Math.round(settings.noise * 100)}%`)}${slider('Noise floor', 'cleanup.floor', settings.floor, -80, -12, 1, `${settings.floor} dB`)}${slider('Click / pop repair', 'cleanup.declick', settings.declick, 0, 1, 0.01, `${Math.round(settings.declick * 100)}%`)}<div class="repair-actions"><button data-action="bypass-cleanup" aria-pressed="${!settings.enabled}">${icon('headphones')} ${settings.enabled ? 'Bypass / A–B' : 'Enable repair'}</button>${button('remove-cleanup', 'trash', 'Remove audio repair')}</div><p>Use lighter settings to preserve detail. Long clipping or distortion may remain.</p>` : '<button class="reverse-button" data-cleanup="clean">Add Noise + Pop Repair</button><p>Or drag an effect from Audio FX onto this clip.</p>'}</div>`;
+}
+
+function applyCleanup(preset: string, target = clip(), layer = track()) {
+  if (busy || !Object.hasOwn(CLEANUP_PRESETS, preset)) return;
+  if (!target || !layer) return notify('Select a clip, then add an audio repair effect.');
+  const values = CLEANUP_PRESETS[preset as keyof typeof CLEANUP_PRESETS];
+  edit(() => {
+    const current = target.cleanup ?? defaultCleanup();
+    target.cleanup = { ...current, enabled: true, noise: values.noise || current.noise, declick: values.declick || current.declick };
+    selectClip(layer, target);
+  }, true);
+  notify(`${values.name} added. Press Play to compare, or adjust Audio Repair on the right.`);
 }
 
 async function drawWaves(version: number) {
@@ -238,8 +259,9 @@ async function drawWaves(version: number) {
 }
 
 async function play() {
-  try { await engine.play(clone(project), cursor); render(); }
-  catch (error) { notify(error instanceof Error ? error.message : 'Could not start audio.', true); }
+  const pending = engine.play(clone(project), cursor); render();
+  try { await pending; render(); }
+  catch (error) { render(); notify(error instanceof Error ? error.message : 'Could not start audio.', true); }
 }
 
 function pause() { clearTimeout(restartTimer); cursor = engine.position(); engine.stop(); render(); }
@@ -349,7 +371,9 @@ app.addEventListener('click', event => {
   if (!element) return;
   if (element.dataset.action === 'cancel-separation') { void action('cancel-separation'); return; }
   if (busy) return;
-  if (element.dataset.add) {
+  if (element.dataset.cleanup) { applyCleanup(element.dataset.cleanup); }
+  else if (element.dataset.library) { libraryTab = element.dataset.library as typeof libraryTab; document.querySelector<HTMLInputElement>('#search')!.value = ''; render(); }
+  else if (element.dataset.add) {
     if (project.tracks.length >= 24 || project.sources.length >= 128 || clipCount(project) >= 512) return notify('Project layer, source or clip limit reached.', true);
     edit(() => { const item = createInstrument(element.dataset.add as TrackKind, project.tracks.length); project.sources.push(item.source); project.tracks.push(item.track); selectTrack(item.track.id); tab = 'pattern'; }, true);
   } else if (element.dataset.selectClip) { const t = project.tracks.find(t => t.clips.some(c => c.id === element.dataset.selectClip))!; selectClip(t, t.clips.find(c => c.id === element.dataset.selectClip)!); render(); }
@@ -370,6 +394,8 @@ app.addEventListener('click', event => {
 
 async function action(name: string) {
   switch (name) {
+    case 'bypass-cleanup': if (clip()?.cleanup) edit(() => { clip()!.cleanup!.enabled = !clip()!.cleanup!.enabled; }, true); break;
+    case 'remove-cleanup': if (clip()?.cleanup) edit(() => { delete clip()!.cleanup; }, true); break;
     case 'add-layer':
       if (project.tracks.length >= 24) return notify('Maximum 24 layers.', true);
       edit(() => { const layer = createLayer(project.tracks.length); project.tracks.push(layer); selectTrack(layer.id); }); break;
@@ -396,7 +422,7 @@ async function action(name: string) {
     case 'vocal-import': document.querySelector<HTMLDialogElement>('#vocal-dialog')!.close(); document.querySelector<HTMLInputElement>('#audio-file')!.click(); break;
     case 'add-instrumental': await addInstrumental(); break;
     case 'save-instrumental': if (separatedBytes && separationSource) await task(async () => { if (await saveBytes(`${separationSource!.name.slice(0, 64)} (Instrumental)`, 'wav', separatedBytes!)) notify('Full instrumental WAV saved.'); }); break;
-    case 'play': if (engine.playing) pause(); else await play(); break;
+    case 'play': if (engine.playing || engine.preparing) pause(); else await play(); break;
     case 'stop': clearTimeout(restartTimer); engine.stop(); cursor = 0; render(); break;
     case 'loop': edit(() => { project.loop = !project.loop; }, true); break;
     case 'arrangement': document.querySelector('.arrangement')!.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); break;
@@ -406,7 +432,7 @@ async function action(name: string) {
     case 'new':
       if (dirty && !confirm('Start a new project? Unsaved changes will be lost.')) return;
       engine.stop(); clearTimeout(restartTimer); checkpoint();
-      project = { version: 2, name: 'Untitled session', bpm: 120, bars: 8, master: 0.8, loop: true, sources: [], tracks: [] };
+      project = { version: 3, name: 'Untitled session', bpm: 120, bars: 8, master: 0.8, loop: true, sources: [], tracks: [] };
       selected = ''; selectedClip = ''; cursor = 0; dirty = false; document.title = 'Lemix Studio'; render(); break;
     case 'save': await task(async () => {
       const text = JSON.stringify(project); parseProject(text);
@@ -435,7 +461,7 @@ async function action(name: string) {
     }
     case 'delete': if (track()) edit(() => { project.tracks = project.tracks.filter(t => t.id !== selected); pruneSources(project); sanitizeSelection(); }, true); break;
     case 'reverse': if (clip()) edit(() => { clip()!.reverse = !clip()!.reverse; }, true); break;
-    case 'reset-fx': if (track()) edit(() => { if (inspectorMode === 'clip' && clip()) clip()!.effects = neutralEffects(); else track()!.effects = neutralEffects(); }, true); break;
+    case 'reset-fx': if (track()) edit(() => { if (inspectorMode === 'clip' && clip()) { clip()!.effects = neutralEffects(); delete clip()!.cleanup; } else track()!.effects = neutralEffects(); }, true); break;
     case 'clear-pattern': if (source()) edit(() => { source()!.steps.forEach(row => row.fill(false)); source()!.notes.fill(-1); }, true); break;
     case 'help': document.querySelector<HTMLDialogElement>('#help-dialog')!.showModal(); break;
     case 'close-help': document.querySelector<HTMLDialogElement>('#help-dialog')!.close(); break;
@@ -459,12 +485,13 @@ app.addEventListener('input', event => {
   } else if (key === 'master') project.master = value;
   else if (key && track()) {
     const t = track()!;
-    if (key.startsWith('fx.')) (inspectorMode === 'clip' && clip() ? clip()!.effects : t.effects)[key.slice(3) as keyof Effects] = value;
+    if (key.startsWith('cleanup.') && clip()?.cleanup) clip()!.cleanup![key.slice(8) as 'noise' | 'floor' | 'declick'] = value;
+    else if (key.startsWith('fx.')) (inspectorMode === 'clip' && clip() ? clip()!.effects : t.effects)[key.slice(3) as keyof Effects] = value;
     else if (key === 'volume' || key === 'pan') t[key] = value;
     else if (clip() && (key === 'gain' || key === 'offset' || key === 'trim' || key === 'rate' || key === 'length')) clip()![key] = value;
   }
   const output = input.closest('label')?.querySelector('output');
-  if (output) output.textContent = key === 'fx.cutoff' ? `${(value / 1000).toFixed(1)} kHz` : key === 'rate' ? `${value.toFixed(2)}×` : key === 'trim' || key === 'length' ? `${value.toFixed(2)} s` : key === 'offset' ? `${value}` : key === 'pan' ? value === 0 ? 'Center' : `${Math.round(Math.abs(value) * 100)}${value < 0 ? 'L' : 'R'}` : key && ['fx.low', 'fx.mid', 'fx.high'].includes(key) ? `${value > 0 ? '+' : ''}${value} dB` : `${Math.round(value * 100)}%`;
+  if (output) output.textContent = key === 'cleanup.floor' ? `${value} dB` : key === 'fx.cutoff' ? `${(value / 1000).toFixed(1)} kHz` : key === 'rate' ? `${value.toFixed(2)}×` : key === 'trim' || key === 'length' ? `${value.toFixed(2)} s` : key === 'offset' ? `${value}` : key === 'pan' ? value === 0 ? 'Center' : `${Math.round(Math.abs(value) * 100)}${value < 0 ? 'L' : 'R'}` : key && ['fx.low', 'fx.mid', 'fx.high'].includes(key) ? `${value > 0 ? '+' : ''}${value} dB` : `${Math.round(value * 100)}%`;
   changed(inspectorMode === 'clip' || key === 'offset' || key === 'trim' || key === 'rate' || key === 'length');
 });
 
@@ -578,10 +605,30 @@ app.addEventListener('cancel', event => {
   if ((event.target as HTMLElement).id === 'vocal-dialog' && separationRunning) { event.preventDefault(); void action('cancel-separation'); }
 }, true);
 window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
-window.addEventListener('dragover', event => { event.preventDefault(); if (event.dataTransfer?.types.includes('Files')) document.body.classList.add('dragging'); });
+const repairMime = 'application/x-lemix-cleanup';
+function clearDropTargets() { document.querySelectorAll('.repair-drop-target').forEach(element => element.classList.remove('repair-drop-target')); }
+app.addEventListener('dragstart', event => {
+  const card = (event.target as HTMLElement).closest<HTMLElement>('[data-cleanup]');
+  if (card && event.dataTransfer) { event.dataTransfer.setData(repairMime, card.dataset.cleanup!); event.dataTransfer.effectAllowed = 'copy'; }
+});
+window.addEventListener('dragend', clearDropTargets);
+window.addEventListener('dragover', event => {
+  event.preventDefault();
+  if (event.dataTransfer?.types.includes('Files')) document.body.classList.add('dragging');
+  if (event.dataTransfer?.types.includes(repairMime)) {
+    clearDropTargets(); (event.target as HTMLElement).closest('[data-clip]')?.classList.add('repair-drop-target');
+    event.dataTransfer.dropEffect = 'copy';
+  }
+});
 window.addEventListener('dragleave', event => { if (!event.relatedTarget) document.body.classList.remove('dragging'); });
 window.addEventListener('drop', event => {
-  event.preventDefault(); document.body.classList.remove('dragging');
+  event.preventDefault(); document.body.classList.remove('dragging'); clearDropTargets();
+  if (event.dataTransfer?.types.includes(repairMime)) {
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-clip]');
+    const layer = project.tracks.find(t => t.clips.some(c => c.id === target?.dataset.clip));
+    if (!target || !layer) { notify('Drop the repair effect directly onto an audio clip.'); return; }
+    applyCleanup(event.dataTransfer.getData(repairMime), layer.clips.find(c => c.id === target.dataset.clip), layer); return;
+  }
   const files = Array.from(event.dataTransfer?.files ?? []);
   if (files.some(file => /\.(lemix|json)$/i.test(file.name))) return notify('Use Open project to load a .lemix file.');
   const lane = (event.target as HTMLElement).closest<HTMLElement>('[data-lane]');

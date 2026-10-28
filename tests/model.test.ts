@@ -16,7 +16,7 @@ test('legacy projects preserve source audio, timing, channel effects and mute wh
   const legacy = { ...p, version: 1, sources: undefined, tracks: p.tracks.map((t, i) => ({ ...p.sources[i], ...t, clips: undefined, offset: 2, trim: 0.3, rate: 1.25, reverse: true })) };
   legacy.tracks[0].muted = true;
   const migrated = parseProject(JSON.stringify(legacy));
-  assert.equal(migrated.version, 2); assert.equal(migrated.sources.length, 4);
+  assert.equal(migrated.version, 3); assert.equal(migrated.sources.length, 4);
   const c = migrated.tracks[0].clips[0];
   assert.equal(c.offset, 2); assert.equal(c.trim, 0.3); assert.equal(c.rate, 1.25); assert.equal(c.reverse, true);
   assert.equal(c.length, null); assert.equal(c.effects.cutoff, 20000);

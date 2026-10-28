@@ -2,6 +2,7 @@ import { audible, duration, encodeWav } from './model.ts';
 import type { Clip, Effects, Project, Source } from './model.ts';
 import { synthesize } from './synthesis.ts';
 import { clipDuration } from './timeline.ts';
+import { repairBuffer } from './cleanup-client.ts';
 
 interface Mix { volume: number; pan: number; effects: Effects }
 
@@ -70,6 +71,7 @@ export class AudioEngine {
   analyser = this.context.createAnalyser();
   master = this.context.createGain();
   playing = false;
+  preparing = false;
   private startedAt = 0;
   private cursor = 0;
   private nextCycle = 0;
@@ -79,6 +81,8 @@ export class AudioEngine {
   private clipChains = new Map<string, Chain>();
   private cache = new Map<string, { signature: string; audio?: string; buffer: AudioBuffer }>();
   private currentProject?: Project;
+  private preparation?: AbortController;
+  private cleanupCache = new Map<string, { original: AudioBuffer; repaired: AudioBuffer }>();
   private generation = 0;
   onEnded = () => {};
 
@@ -114,12 +118,33 @@ export class AudioEngine {
   async prepare(project: Project) {
     const ids = new Set(project.sources.map(s => s.id));
     for (const key of this.cache.keys()) if (!ids.has(key.split(':')[0])) this.cache.delete(key);
+    for (const key of this.cleanupCache.keys()) if (!ids.has(key.split(':')[0])) this.cleanupCache.delete(key);
     const buffers = new Map<string, AudioBuffer>();
     for (const track of project.tracks) for (const clip of track.clips) {
       const key = `${clip.sourceId}:${clip.reverse}`;
       if (!buffers.has(key)) buffers.set(key, await this.buffer(project.sources.find(s => s.id === clip.sourceId)!, project, clip.reverse));
     }
     return buffers;
+  }
+
+  private async prepareClips(project: Project, raw: Map<string, AudioBuffer>, signal?: AbortSignal) {
+    const result = new Map<string, AudioBuffer>(); const prepared = new Map<string, AudioBuffer>();
+    for (const track of project.tracks) for (const clip of track.clips) {
+      signal?.throwIfAborted();
+      const buffer = raw.get(`${clip.sourceId}:${clip.reverse}`)!;
+      const settings = clip.cleanup;
+      if (!settings?.enabled || !settings.noise && !settings.declick || clip.muted || !audible(project.tracks, track)) { result.set(clip.id, buffer); continue; }
+      const key = `${clip.sourceId}:${clip.reverse}:${settings.noise}:${settings.floor}:${settings.declick}`;
+      const cached = this.cleanupCache.get(key);
+      let repaired = prepared.get(key) ?? (cached?.original === buffer ? cached.repaired : undefined);
+      if (!repaired) {
+        repaired = await repairBuffer(buffer, settings, this.context, signal);
+        this.cleanupCache.set(key, { original: buffer, repaired });
+        if (this.cleanupCache.size > 2) this.cleanupCache.delete(this.cleanupCache.keys().next().value!);
+      }
+      prepared.set(key, repaired); result.set(clip.id, repaired);
+    }
+    return result;
   }
 
   private schedule(context: BaseAudioContext, track: Clip, buffer: AudioBuffer, input: AudioNode, project: Project, when: number, cursor: number) {
@@ -162,29 +187,35 @@ export class AudioEngine {
   }
 
   private scheduleProject(context: BaseAudioContext, project: Project, buffers: Map<string, AudioBuffer>, inputs: Map<string, AudioNode>, when: number, cursor: number) {
-    for (const track of project.tracks) for (const clip of track.clips) this.schedule(context, clip, buffers.get(`${clip.sourceId}:${clip.reverse}`)!, inputs.get(clip.id)!, project, when, cursor);
+    for (const track of project.tracks) for (const clip of track.clips) this.schedule(context, clip, buffers.get(clip.id)!, inputs.get(clip.id)!, project, when, cursor);
   }
 
   async play(project: Project, cursor: number) {
     this.stop();
     const generation = this.generation;
-    await this.context.resume();
-    const buffers = await this.prepare(project);
-    if (generation !== this.generation) return;
-    this.currentProject = project; this.cursor = cursor >= duration(project) ? 0 : cursor;
-    this.startedAt = this.context.currentTime + 0.04; this.playing = true;
-    this.master.gain.value = project.master;
-    const inputs = this.buildTracks(this.context, this.master, project, true);
-    this.scheduleProject(this.context, project, buffers, inputs, this.startedAt, this.cursor);
-    this.nextCycle = this.startedAt + duration(project) - this.cursor;
-    this.timer = setInterval(() => {
-      if (project.loop && this.context.currentTime + 0.2 >= this.nextCycle) {
-        this.scheduleProject(this.context, project, buffers, inputs, this.nextCycle, 0);
-        this.nextCycle += duration(project);
-      } else if (!project.loop && this.context.currentTime >= this.nextCycle) {
-        this.stop(); this.onEnded();
-      }
-    }, 50);
+    const controller = new AbortController(); this.preparation = controller;
+    this.preparing = true;
+    this.cursor = cursor >= duration(project) ? 0 : cursor;
+    try {
+      await this.context.resume();
+      const buffers = await this.prepareClips(project, await this.prepare(project), controller.signal);
+      if (generation !== this.generation) return;
+      this.currentProject = project; this.cursor = cursor >= duration(project) ? 0 : cursor;
+      this.startedAt = this.context.currentTime + 0.04; this.playing = true;
+      this.master.gain.value = project.master;
+      const inputs = this.buildTracks(this.context, this.master, project, true);
+      this.scheduleProject(this.context, project, buffers, inputs, this.startedAt, this.cursor);
+      this.nextCycle = this.startedAt + duration(project) - this.cursor;
+      this.timer = setInterval(() => {
+        if (project.loop && this.context.currentTime + 0.2 >= this.nextCycle) {
+          this.scheduleProject(this.context, project, buffers, inputs, this.nextCycle, 0);
+          this.nextCycle += duration(project);
+        } else if (!project.loop && this.context.currentTime >= this.nextCycle) {
+          this.stop(); this.onEnded();
+        }
+      }, 50);
+    } catch (error) { if (!controller.signal.aborted) throw error; }
+    finally { if (generation === this.generation) this.preparing = false; }
   }
 
   position(): number {
@@ -200,6 +231,7 @@ export class AudioEngine {
 
   stop() {
     this.generation++;
+    this.preparation?.abort(new DOMException('Audio preparation canceled.', 'AbortError')); this.preparing = false;
     if (this.playing) this.cursor = this.position();
     this.playing = false; clearInterval(this.timer);
     for (const source of this.sources) { source.stop(); source.disconnect(); }
@@ -211,7 +243,7 @@ export class AudioEngine {
   }
 
   async export(project: Project): Promise<Uint8Array> {
-    const buffers = await this.prepare(project);
+    const buffers = await this.prepareClips(project, await this.prepare(project));
     const context = new OfflineAudioContext(2, Math.ceil((duration(project) + 2) * 44100), 44100);
     const master = context.createGain(); master.gain.value = project.master;
     const limiter = context.createDynamicsCompressor();

@@ -50,3 +50,18 @@ main{padding:29px 24px 0;min-width:0;background:radial-gradient(ellipse at 30% 0
 .import-area { padding: 14px 8px; margin-top: 16px; margin-bottom: 12px; gap: 7px; }
 .browser-bottom { margin-top: 0; padding-top: 18px; }
 @media (max-height: 950px) { .browser-bottom { display: none; } }
+.library-tabs { display: flex; gap: 4px; padding: 3px; margin: 0 0 13px; background: #101117; border: 1px solid #2b2c37; border-radius: 5px; }
+.library-tabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 3px; font-size: 9px; color: #777d93; border-radius: 3px; }
+.library-tabs .icon { width: 12px; height: 12px; }
+.library-tabs button.active { color: var(--purple); background: #b2a1ff13; }
+.repair-card { cursor: grab; }
+.repair-card:active { cursor: grabbing; }
+.repair-card small { max-width: 125px; }
+.repair-help { font-size: 10px; color: #919aab; line-height: 1.9; padding: 13px 8px; }
+.repair-help small { color: #677283; font-size: 9px; }
+.audio-clip.repair-drop-target { outline: 2px solid var(--green); outline-offset: 2px; background: #a9d9bc35; }
+.repair-controls > .section-title { color: var(--green); }
+.repair-controls > p { font-size: 8px; line-height: 1.7; color: #747e90; margin-bottom: 15px; }
+.repair-actions { display: flex; align-items: center; gap: 5px; margin-bottom: 12px; }
+.repair-actions > button:first-child { flex: 1; display: flex; gap: 7px; align-items: center; border: 1px solid #3b4d45; border-radius: 4px; background: #a9d9bc0c; padding: 8px; font-size: 8px; color: var(--green); }
+.repair-actions .icon { height: 12px; width: 12px; }

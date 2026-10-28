@@ -23,10 +23,18 @@ export interface Source {
   id: string; name: string; kind: TrackKind; steps: boolean[][]; notes: number[];
   audio?: string;
 }
+export interface Cleanup { enabled: boolean; noise: number; floor: number; declick: number }
+export const CLEANUP_PRESETS = {
+  noise: { name: 'Noise Reduction', description: 'Reduce steady hiss and low-level noise', noise: 0.65, declick: 0 },
+  declick: { name: 'Click / Pop Repair', description: 'Repair short clicks and electrical crackle', noise: 0, declick: 0.85 },
+  clean: { name: 'Clean Audio', description: 'Noise reduction + click and pop repair', noise: 0.65, declick: 0.85 },
+} as const;
+export const defaultCleanup = (): Cleanup => ({ enabled: true, noise: 0, floor: -42, declick: 0 });
 export interface Clip {
   id: string; sourceId: string; name: string;
   offset: number; trim: number; length: number | null; rate: number; reverse: boolean;
   gain: number; muted: boolean; effects: Effects;
+  cleanup?: Cleanup;
 }
 export interface Track {
   id: string; name: string; color: string;
@@ -34,7 +42,7 @@ export interface Track {
   effects: Effects; clips: Clip[];
 }
 export interface Project {
-  version: 2; name: string; bpm: number; bars: number;
+  version: 3; name: string; bpm: number; bars: number;
   master: number; loop: boolean; sources: Source[]; tracks: Track[];
 }
 
@@ -68,7 +76,7 @@ export function demoProject(): Project {
   tracks[2].name = 'Afterglow keys'; tracks[2].volume = 0.44; tracks[2].effects.delay = 0.22;
   tracks[3].name = 'Velvet atmosphere'; tracks[3].volume = 0.28;
   tracks.forEach(t => { t.clips[0].name = t.name; });
-  return { version: 2, name: 'Midnight in motion', bpm: 112, bars: 8, master: 0.8, loop: true, sources: instruments.map(i => i.source), tracks };
+  return { version: 3, name: 'Midnight in motion', bpm: 112, bars: 8, master: 0.8, loop: true, sources: instruments.map(i => i.source), tracks };
 }
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -94,7 +102,7 @@ function validChannel(t: Record<string, unknown>) {
 export function parseProject(text: string): Project {
   if (text.length > MAX_PROJECT_BYTES) throw new Error('Project exceeds 300 MB.');
   const p: unknown = JSON.parse(text);
-  if (!record(p) || ![1, 2].includes(Number(p.version)) || !name(p.name) ||
+  if (!record(p) || (p.version !== 1 && p.version !== 2 && p.version !== 3) || !name(p.name) ||
       !numberIn(p.bpm, 40, 240) || !numberIn(p.bars, 1, maxBars(p.bpm)) || !Number.isInteger(p.bars) ||
       !numberIn(p.master, 0, 1) || typeof p.loop !== 'boolean' || !Array.isArray(p.tracks) ||
       p.tracks.length > 24) throw new Error('Unsupported or invalid Lemix project.');
@@ -110,7 +118,7 @@ export function parseProject(text: string): Project {
     }
     return parseProject(JSON.stringify({ ...p, version: 2, sources, tracks }));
   }
-  if (p.version !== 2 || !Array.isArray(p.sources) || p.sources.length > 128) throw new Error('Invalid project sources.');
+  if ((p.version !== 2 && p.version !== 3) || !Array.isArray(p.sources) || p.sources.length > 128) throw new Error('Invalid project sources.');
   const sourceIds = new Set<string>(); const trackIds = new Set<string>(); const clipIds = new Set<string>();
   for (const s of p.sources) {
     if (!record(s) || !validSource(s) || sourceIds.has(s.id as string)) throw new Error('Project contains an invalid source.');
@@ -125,15 +133,17 @@ export function parseProject(text: string): Project {
           !(c.length === null || numberIn(c.length, 0.01, 1225)) || !numberIn(c.rate, 0.5, 2) ||
           typeof c.reverse !== 'boolean' || typeof c.muted !== 'boolean' || !numberIn(c.gain, 0, 2) || !validEffects(c.effects)) throw new Error('Project contains an invalid clip.');
       clipIds.add(c.id);
+      if (c.cleanup !== undefined && (!record(c.cleanup) || typeof c.cleanup.enabled !== 'boolean' || !numberIn(c.cleanup.noise, 0, 1) || !numberIn(c.cleanup.floor, -80, -12) || !numberIn(c.cleanup.declick, 0, 1))) throw new Error('Invalid audio repair settings.');
       if (clipIds.size > 512) throw new Error('Maximum 512 clips per project.');
     }
   }
+  p.version = 3;
   return p as unknown as Project;
 }
 
 export const duration = (project: Project) => project.bars * 4 * 60 / project.bpm;
 export const audible = (tracks: Track[], track: Track) => !track.muted && (!tracks.some(t => t.solo) || track.solo);
-export const cloneClip = (clip: Clip): Clip => ({ ...clip, effects: { ...clip.effects } });
+export const cloneClip = (clip: Clip): Clip => ({ ...clip, effects: { ...clip.effects }, ...(clip.cleanup ? { cleanup: { ...clip.cleanup } } : {}) });
 export const cloneProject = (p: Project): Project => ({ ...p,
   sources: p.sources.map(s => ({ ...s, steps: s.steps.map(row => [...row]), notes: [...s.notes] })),
   tracks: p.tracks.map(t => ({ ...t, effects: { ...t.effects }, clips: t.clips.map(cloneClip) })),
