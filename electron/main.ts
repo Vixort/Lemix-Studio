@@ -3,10 +3,19 @@ import { randomUUID } from 'node:crypto';
 import { writeFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { IpcMainInvokeEvent } from 'electron';
+import { registerSeparation } from './separation.js';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const devUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
 if (devUrl && devUrl !== 'http://127.0.0.1:5173') throw new Error('Invalid development URL');
+
+function trustedWindow(event: IpcMainInvokeEvent) {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const expectedUrl = devUrl ? new URL(devUrl).href : new URL('../dist/index.html', import.meta.url).href;
+  if (!window || event.senderFrame !== event.sender.mainFrame || event.senderFrame.url !== expectedUrl) throw new Error('Untrusted request');
+  return window;
+}
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -34,12 +43,9 @@ function createWindow() {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  registerSeparation(trustedWindow);
   ipcMain.handle('save-file', async (event, value: unknown) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    const expectedUrl = devUrl ? new URL(devUrl).href : new URL('../dist/index.html', import.meta.url).href;
-    if (!window || event.senderFrame !== event.sender.mainFrame || event.senderFrame.url !== expectedUrl) {
-      throw new Error('Untrusted save request');
-    }
+    const window = trustedWindow(event);
     if (!value || typeof value !== 'object') throw new Error('Invalid save request');
     const { name, kind, bytes } = value as Record<string, unknown>;
     if (typeof name !== 'string' || name.length > 160 || !['project', 'wav'].includes(String(kind)) ||
