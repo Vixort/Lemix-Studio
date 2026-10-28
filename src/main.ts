@@ -13,6 +13,7 @@ let selectedClip = project.tracks[0].clips[0].id;
 let inspectorMode: 'track' | 'clip' = 'track';
 let timelineTool: 'select' | 'split' = 'select';
 let snap = true;
+let revealSelection = false;
 let importTarget: { trackId: string; beat: number } | undefined;
 const sourceLengths = new Map<string, number>();
 let tab: 'pattern' | 'mixer' = 'pattern';
@@ -39,8 +40,8 @@ const clip = () => track()?.clips.find(c => c.id === selectedClip);
 const source = () => project.sources.find(s => s.id === clip()?.sourceId);
 const trackKind = (t: Track): TrackKind => project.sources.find(s => s.id === t.clips[0]?.sourceId)?.kind ?? 'audio';
 const sourceDuration = (id: string) => sourceLengths.get(id) ?? duration(project);
-function selectTrack(id: string) { selected = id; selectedClip = track()?.clips[0]?.id ?? ''; inspectorMode = 'track'; }
-function selectClip(t: Track, c: Clip) { selected = t.id; selectedClip = c.id; inspectorMode = 'clip'; }
+function selectTrack(id: string) { selected = id; selectedClip = track()?.clips[0]?.id ?? ''; inspectorMode = 'track'; revealSelection = true; }
+function selectClip(t: Track, c: Clip) { selected = t.id; selectedClip = c.id; inspectorMode = 'clip'; revealSelection = true; }
 function sanitizeSelection() { if (!track()) selected = project.tracks[0]?.id ?? ''; if (!clip()) selectedClip = track()?.clips[0]?.id ?? ''; if (!clip()) inspectorMode = 'track'; }
 function fitTimeline() { const end = Math.max(0, ...project.tracks.flatMap(t => t.clips.map(c => c.offset * 60 / project.bpm + clipDuration(c, sourceDuration(c.sourceId))))); project.bars = Math.max(project.bars, Math.min(maxBars(project.bpm), Math.ceil(end * project.bpm / 240))); }
 const kindIcon = (kind: TrackKind) => kind === 'drums' ? 'drum' : kind === 'audio' ? 'wave' : 'keys';
@@ -87,6 +88,8 @@ function render() {
   editing = false;
   const t = track();
   const scroll = document.querySelector('.arranger-scroll')?.scrollLeft ?? 0;
+  const verticalScroll = document.querySelector('.arranger-viewport')?.scrollTop ?? 0;
+  const reveal = revealSelection; revealSelection = false;
   app.innerHTML = `
     <header class="topbar">
       <a class="brand" href="#" aria-label="Lemix Studio">${icon('wave')}<span>lemix<span class="brand-dot">.</span></span><small>STUDIO</small></a>
@@ -134,8 +137,11 @@ function render() {
     <dialog id="vocal-dialog"><button class="dialog-close" data-action="close-vocal" aria-label="Close vocal remover">×</button><div id="vocal-content"></div></dialog>
     <dialog id="help-dialog"><button class="dialog-close" data-action="close-help" aria-label="Close help">×</button><span class="eyebrow">WELCOME TO YOUR STUDIO</span><h2>Make something that sounds like you.</h2><p>Press Space to play the demo. Add an instrument from the library or import your own audio. Drag a clip to move it, then shape its sound in the channel strip.</p><p>Click steps to build a beat, or notes to write a melody. Patterns repeat every bar; the built-in progression moves through C minor, F minor, E♭ minor and G minor.</p><dl><dt>Space</dt><dd>Play / pause</dd><dt>Ctrl / ⌘ + S</dt><dd>Save a self-contained .lemix project</dd><dt>Ctrl / ⌘ + O</dt><dd>Open a project</dd><dt>Ctrl / ⌘ + Z</dt><dd>Undo</dd><dt>Ctrl / ⌘ + Shift + Z</dt><dd>Redo</dd></dl><p>Export creates a 44.1 kHz stereo WAV with the current mix and a two-second effect tail. Speed changes pitch too. Save your work before closing.</p><button class="export-button" data-action="close-help">Let's make some noise ${icon('chevron')}</button></dialog>`;
   document.querySelector('.arranger-scroll')!.scrollLeft = scroll;
+  document.querySelector('.arranger-viewport')!.scrollTop = verticalScroll;
   const version = ++revision;
-  void drawWaves(version);
+  void drawWaves(version).then(() => {
+    if (version === revision && reveal) (document.querySelector<HTMLElement>(`[data-clip="${selectedClip}"]`) ?? document.querySelector<HTMLElement>(`[data-lane="${selected}"]`))?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
 }
 
 function pattern(t?: Track) {
@@ -182,6 +188,16 @@ async function drawWaves(version: number) {
       const buffer = await engine.buffer(content, project, c.reverse);
       if (version !== revision) return;
       sourceLengths.set(content.id, buffer.duration);
+      if (c.id === selectedClip) {
+        const trim = document.querySelector<HTMLInputElement>('[data-control="trim"]');
+        const length = document.querySelector<HTMLInputElement>('[data-control="length"]');
+        if (trim) trim.max = `${Math.max(c.trim, buffer.duration - 0.01)}`;
+        if (length) {
+          length.max = `${Math.max(0.01, (buffer.duration - c.trim) / c.rate)}`;
+          length.value = `${clipDuration(c, buffer.duration)}`;
+          length.closest('label')!.querySelector('output')!.textContent = `${clipDuration(c, buffer.duration).toFixed(2)} s`;
+        }
+      }
       const canvas = document.querySelector<HTMLCanvasElement>(`canvas[data-wave="${c.id}"]`);
       if (!canvas) continue;
       const clip = canvas.parentElement!;
@@ -357,6 +373,7 @@ async function action(name: string) {
       const t = track(); const c = clip(); if (!t || !c) return;
       if (clipCount(project) >= 512) return notify('Maximum 512 clips.', true);
       const length = clipDuration(c, sourceDuration(c.sourceId));
+      if (length < 0.01) return notify('This clip has no usable audio to duplicate.', true);
       const copy = { ...cloneClip(c), id: crypto.randomUUID(), offset: c.offset + length * project.bpm / 60, length };
       if (copy.offset >= maxBars(project.bpm) * 4) return notify('No room at the end of the timeline.', true);
       edit(() => { c.length = length; t.clips.push(copy); selectClip(t, copy); fitTimeline(); }, true); break;
@@ -489,6 +506,7 @@ app.addEventListener('pointerdown', event => {
   const side = target.closest<HTMLElement>('[data-trim]')?.dataset.trim as 'left' | 'right' | undefined;
   if (timelineTool === 'split' && !side) { splitAt(beatAt(event.clientX) * 60 / project.bpm); return; }
   event.preventDefault();
+  if (event.isTrusted) app.setPointerCapture(event.pointerId);
   const original = cloneClip(c); const sourceSeconds = sourceDuration(c.sourceId);
   const x = event.clientX; const y = event.clientY;
   const scroll = document.querySelector<HTMLElement>('.arranger-scroll')!; const initialScroll = scroll.scrollLeft;
