@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { once } from 'node:events';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MODEL_HASH, MODEL_NAME, decodeSeparationInput } from './separation-dsp.js';
+import { MODEL_HASH, MODEL_NAME, validateSeparationInput } from './separation-dsp.js';
 
 const MODEL_URL = `https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/${MODEL_NAME}`;
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -62,7 +62,7 @@ export function registerSeparation(trustedWindow: (event: IpcMainInvokeEvent) =>
   ipcMain.handle('vocal-start', async (event, value: unknown) => {
     const window = trustedWindow(event);
     if (active) throw new Error('Another song is already being separated.');
-    decodeSeparationInput(value);
+    validateSeparationInput(value);
     const bytes = value as Uint8Array;
     const controller = new AbortController(); const { signal } = controller;
     active = { sender: event.sender.id, controller };

@@ -33,7 +33,7 @@ process.parentPort.once('message', async ({ data }: { data: { input: string; out
       for (let i = 0; i < VALID && start + i < length; i++) {
         const weight = Math.sin(Math.PI * (i + 0.5) / VALID) ** 2;
         weights[start + i] += weight;
-        for (let ch = 0; ch < 2; ch++) result[ch][start + i] += separated[ch][FFT_SIZE / 2 + i] * weight * 1.035;
+        for (let ch = 0; ch < 2; ch++) result[ch][start + i] += separated[ch][FFT_SIZE / 2 + i] * weight * 1.022;
       }
       input.dispose(); for (const tensor of Object.values(predicted)) tensor.dispose();
       process.parentPort.postMessage({ stage: 'separating', percent: Math.round(Math.min(1, (start + stride) / length) * 100) });

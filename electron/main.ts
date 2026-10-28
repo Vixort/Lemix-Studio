@@ -49,8 +49,8 @@ app.whenReady().then(() => {
     if (!value || typeof value !== 'object') throw new Error('Invalid save request');
     const { name, kind, bytes } = value as Record<string, unknown>;
     if (typeof name !== 'string' || name.length > 160 || !['project', 'wav'].includes(String(kind)) ||
-        !(bytes instanceof Uint8Array) || bytes.byteLength > 200 * 1024 * 1024) {
-      throw new Error('Invalid file data or file exceeds 200 MB');
+        !(bytes instanceof Uint8Array) || bytes.byteLength > (kind === 'project' ? 300 : 200) * 1024 * 1024) {
+      throw new Error('Invalid file data or file exceeds the size limit');
     }
     const extension = kind === 'wav' ? 'wav' : 'lemix';
     const result = await dialog.showSaveDialog(window, {

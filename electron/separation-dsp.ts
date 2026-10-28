@@ -91,7 +91,7 @@ export class MDXSpectrogram {
   }
 }
 
-export function decodeSeparationInput(value: unknown): Float32Array[] {
+export function validateSeparationInput(value: unknown): number {
   if (!(value instanceof Uint8Array) || value.length < 48 || value.length > 44 + 600 * 44100 * 4) throw new Error('Select a song up to 10 minutes long.');
   const view = new DataView(value.buffer, value.byteOffset, value.byteLength);
   const text = (offset: number, length: number) => String.fromCharCode(...value.subarray(offset, offset + length));
@@ -103,7 +103,12 @@ export function decodeSeparationInput(value: unknown): Float32Array[] {
       view.getUint32(40, true) !== value.length - 44 || (value.length - 44) % 4 !== 0) {
     throw new Error('Invalid separation input. Expected stereo 44.1 kHz PCM WAV.');
   }
-  const frames = (value.length - 44) / 4;
+  return (value.length - 44) / 4;
+}
+
+export function decodeSeparationInput(value: Uint8Array): Float32Array[] {
+  const frames = validateSeparationInput(value);
+  const view = new DataView(value.buffer, value.byteOffset, value.byteLength);
   const channels = [new Float32Array(frames), new Float32Array(frames)];
   for (let i = 0; i < frames; i++) for (let ch = 0; ch < 2; ch++) channels[ch][i] = view.getInt16(44 + i * 4 + ch * 2, true) / 32768;
   return channels;

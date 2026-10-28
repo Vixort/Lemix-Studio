@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { audible, createTrack, demoProject, duration, encodeWav, parseProject } from '../src/model.ts';
+import { audible, createTrack, demoProject, duration, encodeWav, parseProject, maxBars } from '../src/model.ts';
 import { synthesize } from '../src/synthesis.ts';
 
 test('demo round trips with independent patterns and valid duration', () => {
@@ -40,6 +40,14 @@ test('solo respects mute and mutes other tracks', () => {
   assert.equal(audible(tracks, tracks[1]), true);
   tracks[1].muted = true;
   assert.equal(audible(tracks, tracks[1]), false);
+});
+
+test('full-song arrangements round trip and stay within the rendering duration limit', () => {
+  const p = demoProject(); p.bars = 160;
+  assert.equal(parseProject(JSON.stringify(p)).bars, 160);
+  assert.ok(maxBars(40) * 4 * 60 / 40 <= 612);
+  p.bars = maxBars(p.bpm) + 1;
+  assert.throws(() => parseProject(JSON.stringify(p)));
 });
 
 test('WAV has correct stereo headers, interleaving, clipping and finite samples', () => {

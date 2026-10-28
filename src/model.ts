@@ -1,5 +1,8 @@
 export const COLORS = ['#b2a1ff', '#f5b978', '#6bd6bd', '#80b8fc', '#f192b5', '#dfd078'];
 export const DRUMS = ['Kick', 'Snare', 'Hi-hat', 'Clap'] as const;
+export const MAX_PROJECT_BYTES = 300 * 1024 * 1024;
+export const MAX_AUDIO_BYTES = 108 * 1024 * 1024;
+export const maxBars = (bpm: number) => Math.min(600, Math.floor(612 * bpm / 240));
 export type TrackKind = 'drums' | 'bass' | 'keys' | 'pad' | 'audio';
 export interface Effects {
   low: number; mid: number; high: number; cutoff: number;
@@ -43,10 +46,10 @@ const numberIn = (value: unknown, min: number, max: number): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
 
 export function parseProject(text: string): Project {
-  if (text.length > 100 * 1024 * 1024) throw new Error('Project exceeds 100 MB.');
+  if (text.length > MAX_PROJECT_BYTES) throw new Error('Project exceeds 300 MB.');
   const p: unknown = JSON.parse(text);
   if (!record(p) || p.version !== 1 || typeof p.name !== 'string' || p.name.length > 80 ||
-      !numberIn(p.bpm, 40, 240) || !numberIn(p.bars, 1, 32) || !Number.isInteger(p.bars) ||
+      !numberIn(p.bpm, 40, 240) || !numberIn(p.bars, 1, maxBars(p.bpm)) || !Number.isInteger(p.bars) ||
       !numberIn(p.master, 0, 1) || typeof p.loop !== 'boolean' || !Array.isArray(p.tracks) ||
       p.tracks.length > 24) throw new Error('Unsupported or invalid Lemix project.');
   const ids = new Set<string>();
@@ -64,7 +67,7 @@ export function parseProject(text: string): Project {
         !Array.isArray(t.steps) || t.steps.length !== 4 ||
         !t.steps.every(row => Array.isArray(row) && row.length === 16 && row.every(v => typeof v === 'boolean')) ||
         !Array.isArray(t.notes) || t.notes.length !== 16 || !t.notes.every(n => numberIn(n, -1, 12) && Number.isInteger(n)) ||
-        (t.kind === 'audio' && (typeof t.audio !== 'string' || !t.audio.length || t.audio.length % 4 !== 0 || t.audio.length > 34 * 1024 * 1024 || !/^[A-Za-z0-9+/]*={0,2}$/.test(t.audio))) ||
+        (t.kind === 'audio' && (typeof t.audio !== 'string' || !t.audio.length || t.audio.length % 4 !== 0 || t.audio.length > MAX_AUDIO_BYTES * 4 / 3 || !/^[A-Za-z0-9+/]*={0,2}$/.test(t.audio))) ||
         (t.kind !== 'audio' && t.audio !== undefined)) throw new Error('Project contains an invalid track.');
     ids.add(t.id);
   }

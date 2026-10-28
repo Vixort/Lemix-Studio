@@ -1,6 +1,6 @@
 import './style.css';
 import { AudioEngine } from './audio.ts';
-import { COLORS, DRUMS, createTrack, demoProject, duration, parseProject } from './model.ts';
+import { COLORS, DRUMS, MAX_AUDIO_BYTES, MAX_PROJECT_BYTES, createTrack, demoProject, duration, parseProject, maxBars, encodeWav } from './model.ts';
 import type { Effects, Project, Track, TrackKind } from './model.ts';
 import { icon } from './icons.ts';
 
@@ -16,6 +16,11 @@ let busy = false;
 let editing = false;
 let revision = 0;
 let restartTimer: ReturnType<typeof setTimeout>;
+let separationSource: Track | undefined;
+let separatedBytes: Uint8Array | undefined;
+let separationRunning = false;
+let separationError = '';
+let separationCanceled = false;
 const history: Project[] = [];
 const future: Project[] = [];
 const esc = (text: string) => text.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
@@ -76,6 +81,7 @@ function render() {
         <div class="section-title">YOUR WORKSPACE <span class="shortcut">⌘</span></div>
         <button class="nav-item active" data-action="arrangement">${icon('sliders')} Arrangement <span>01</span></button>
         <button class="nav-item" data-action="mixer">${icon('headphones')} Mixer <span>${project.tracks.length}</span></button>
+        <button class="nav-item ai-tool" data-action="vocal-remover">${icon('spark')} Vocal Remover <span>AI</span></button>
         <div class="browser-title">SOUND LIBRARY <span class="pill">BUILT-IN</span></div>
         <label class="search">${icon('search')}<input id="search" placeholder="Find your sound…" aria-label="Search instruments" /></label>
         <div class="library">
@@ -91,7 +97,7 @@ function render() {
           <div class="time-display"><strong id="time">${format(cursor)}</strong><span id="beat-position">BAR 01 · BEAT 1</span></div>
           <label class="tempo"><input id="bpm" type="number" aria-label="Tempo BPM" min="40" max="240" value="${project.bpm}" /><span>BPM</span></label>
           <div class="signature"><strong>4 / 4</strong><span>TIME SIGNATURE</span></div>
-          <label class="length"><select id="bars" aria-label="Arrangement length">${Array.from({ length: 32 }, (_, i) => i + 1).map(n => `<option value="${n}" ${project.bars === n ? 'selected' : ''}>${n} bars</option>`).join('')}</select><span>LENGTH</span></label>
+          <label class="length"><select id="bars" aria-label="Arrangement length">${Array.from({ length: maxBars(project.bpm) }, (_, i) => i + 1).map(n => `<option value="${n}" ${project.bars === n ? 'selected' : ''}>${n} bars</option>`).join('')}</select><span>LENGTH</span></label>
           <div class="transport-end"><span class="live-dot"></span> ${engine.playing ? 'PLAYING' : 'STUDIO READY'}<div class="mini-level"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
         </section>
         <section class="arrangement" aria-label="Multitrack arrangement">
@@ -108,6 +114,7 @@ function render() {
     </div>
     <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.ogg,.flac,.m4a" hidden multiple /><input id="project-file" type="file" accept=".lemix,.json" hidden />
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <dialog id="vocal-dialog"><button class="dialog-close" data-action="close-vocal" aria-label="Close vocal remover">×</button><div id="vocal-content"></div></dialog>
     <dialog id="help-dialog"><button class="dialog-close" data-action="close-help" aria-label="Close help">×</button><span class="eyebrow">WELCOME TO YOUR STUDIO</span><h2>Make something that sounds like you.</h2><p>Press Space to play the demo. Add an instrument from the library or import your own audio. Drag a clip to move it, then shape its sound in the channel strip.</p><p>Click steps to build a beat, or notes to write a melody. Patterns repeat every bar; the built-in progression moves through C minor, F minor, E♭ minor and G minor.</p><dl><dt>Space</dt><dd>Play / pause</dd><dt>Ctrl / ⌘ + S</dt><dd>Save a self-contained .lemix project</dd><dt>Ctrl / ⌘ + O</dt><dd>Open a project</dd><dt>Ctrl / ⌘ + Z</dt><dd>Undo</dd><dt>Ctrl / ⌘ + Shift + Z</dt><dd>Redo</dd></dl><p>Export creates a 44.1 kHz stereo WAV with the current mix and a two-second effect tail. Speed changes pitch too. Save your work before closing.</p><button class="export-button" data-action="close-help">Let's make some noise ${icon('chevron')}</button></dialog>`;
   document.querySelector('.arranger-scroll')!.scrollLeft = scroll;
   const version = ++revision;
@@ -117,7 +124,7 @@ function render() {
 function pattern(t?: Track) {
   if (!t) return '<div class="editor-empty">Pick a sound from the library. Your first idea starts here.</div>';
   const headings = `<div class="step-ruler"><span></span>${Array.from({ length: 16 }, (_, i) => `<span>${i % 4 === 0 ? i / 4 + 1 : '·'}</span>`).join('')}</div>`;
-  if (t.kind === 'audio') return `<div class="audio-editor"><span class="audio-editor-icon" style="color:${t.color}">${icon('wave')}</span><div><h3>${esc(t.name)}</h3><p>Your sample, your signature. Move, trim, reverse or reshape it with the channel strip.</p><span class="pill">EMBEDDED IN PROJECT</span></div><button class="text-button" data-action="import">${icon('plus')} Import another</button></div>`;
+  if (t.kind === 'audio') return `<div class="audio-editor"><span class="audio-editor-icon" style="color:${t.color}">${icon('wave')}</span><div><h3>${esc(t.name)}</h3><p>Give the music its own space. Separate vocals with local AI, or shape your clip with the channel strip.</p><span class="pill">EMBEDDED IN PROJECT</span></div><div class="audio-editor-actions"><button class="export-button" data-action="vocal-remover">${icon('spark')} Remove vocals</button><button class="text-button" data-action="import">${icon('plus')} Import another</button></div></div>`;
   if (t.kind === 'pad') return `<div class="audio-editor"><span class="audio-editor-icon" style="color:${t.color}">${icon('spark')}</span><div><h3>A little atmosphere goes a long way.</h3><p>A slowly evolving minor chord progression. Try a warm low-pass filter and a generous touch of reverb.</p><span class="pill">C m → F m → E♭ m → G m</span></div></div>`;
   return `<div class="pattern-content" style="--accent:${t.color}"><div class="pattern-title"><span class="color-dot" style="background:${t.color}"></span><strong>${esc(t.name)}</strong><span>${t.kind === 'drums' ? '16 STEPS · 1/16' : 'C MINOR · 1/16'}</span><button class="text-button" data-action="clear-pattern">Clear pattern</button></div>${headings}${t.kind === 'drums' ? DRUMS.map((name, row) => `<div class="step-row"><span><small>${String(row + 1).padStart(2, '0')}</small>${name}</span>${t.steps[row].map((on, step) => `<button data-step="${row}:${step}" data-column="${step}" class="step ${on ? 'on' : ''} ${step % 4 === 0 ? 'group-start' : ''}" aria-label="${name} step ${step + 1}" aria-pressed="${on}"></button>`).join('')}</div>`).join('') : [12, 10, 7, 5, 3, 2, 0].map(note => `<div class="note-row"><span>${({ 0: 'C', 2: 'D', 3: 'E♭', 5: 'F', 7: 'G', 10: 'B♭', 12: 'C' } as Record<number, string>)[note]}<small>${t.kind === 'bass' ? '2' : '4'}</small></span>${t.notes.map((n, step) => `<button data-note="${note}:${step}" data-column="${step}" class="note ${n === note ? 'on' : ''}" aria-label="Note ${note}, step ${step + 1}" aria-pressed="${n === note}"></button>`).join('')}</div>`).join('')}</div>`;
 }
@@ -182,22 +189,94 @@ async function saveBytes(name: string, kind: 'project' | 'wav', bytes: Uint8Arra
   setTimeout(() => URL.revokeObjectURL(url), 1000); return true;
 }
 
+function base64(bytes: Uint8Array) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(binary);
+}
+
+function vocalContent() {
+  const source = separationSource;
+  const ready = !!separatedBytes;
+  document.querySelector('#vocal-content')!.innerHTML = `<div class="vocal-brand">${icon('spark')}<span>LEMIX LAB <small>LOCAL AI</small></span></div><h2>Let the music<br/>take center stage<span>.</span></h2><p>Remove vocals from a song and keep the instrumental for your next remix.</p>
+    ${source ? `<div class="vocal-source">${icon('wave')}<span><strong>${esc(source.name)}</strong><small>FULL SOURCE AUDIO · ORIGINAL PRESERVED</small></span><span class="pill">STEREO</span></div>` : '<div class="vocal-empty">Select an imported audio track to get started.<br/>Your song stays on your computer.</div>'}
+    ${separationRunning ? '<div class="vocal-progress"><span id="vocal-stage" aria-live="polite">Preparing your song…</span><progress id="vocal-progress" max="100" aria-label="Vocal separation progress"></progress><small>You can cancel safely. Your original track is untouched.</small></div>' : ready ? '<div class="vocal-result">✓ Your instrumental is ready.<small>Add it to the timeline, or save the complete instrumental as a WAV.</small></div>' : ''}
+    ${separationError ? `<p class="vocal-error" role="alert">${esc(separationError)}</p>` : ''}
+    <div class="vocal-actions">${separationRunning ? '<button class="text-button" data-action="cancel-separation">Cancel separation</button>' : ready ? `<button class="export-button" data-action="add-instrumental">${icon('plus')} Add instrumental track</button><button class="text-button" data-action="save-instrumental">${icon('export')} Save WAV</button>` : !window.lemix ? '<span class="vocal-error">Open the Electron desktop app to use local AI separation.</span>' : source ? `<button class="export-button" data-action="start-separation">${icon('spark')} Remove vocals</button>` : `<button class="export-button" data-action="vocal-import">${icon('import')} Import a song</button>`}</div>
+    <div class="vocal-footnote">MDX-Net · CPU processing · No song uploads<p>Downloads a verified 67 MB model on first use, then works offline. Results depend on the mix; some vocals or artifacts may remain.</p></div>`;
+  document.querySelector<HTMLButtonElement>('#vocal-dialog .dialog-close')!.disabled = separationRunning;
+}
+
+function openVocalRemover() {
+  const source = track();
+  separationSource = source?.kind === 'audio' ? clone({ ...project, tracks: [source] }).tracks[0] : undefined;
+  separatedBytes = undefined; separationError = ''; vocalContent();
+  document.querySelector<HTMLDialogElement>('#vocal-dialog')!.showModal();
+}
+
+window.lemix?.onSeparationProgress(({ stage, percent }) => {
+  if (!separationRunning) return;
+  const label = document.querySelector('#vocal-stage');
+  if (label) label.textContent = stage === 'downloading' ? `Downloading AI model… ${percent}%` : stage === 'separating' ? `Removing vocals… ${percent}%` : 'Loading AI model…';
+  const progress = document.querySelector<HTMLProgressElement>('#vocal-progress');
+  if (progress) { if (stage === 'loading') progress.removeAttribute('value'); else progress.value = percent; }
+});
+
+async function removeVocals() {
+  if (!separationSource || !window.lemix) return;
+  await task(async () => {
+    separationRunning = true; separationCanceled = false; separationError = ''; separatedBytes = undefined;
+    cursor = engine.position(); engine.stop(); clearTimeout(restartTimer);
+    render(); vocalContent(); document.querySelector<HTMLDialogElement>('#vocal-dialog')!.showModal();
+    try {
+      const buffer = await engine.buffer({ ...separationSource!, reverse: false }, project);
+      if (buffer.numberOfChannels > 2) throw new Error('Vocal Remover supports mono or stereo audio. Downmix surround audio first.');
+      const pcm = [buffer.getChannelData(0), buffer.getChannelData(Math.min(1, buffer.numberOfChannels - 1))];
+      if (separationCanceled) throw new Error('Separation canceled.');
+      separatedBytes = await window.lemix!.removeVocals(encodeWav(pcm, buffer.sampleRate));
+    } catch (error) { separationError = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': Error: /, '') : 'Could not separate this song.'; }
+    finally { separationRunning = false; vocalContent(); }
+  });
+}
+
+async function addInstrumental() {
+  if (!separatedBytes || !separationSource) return;
+  await task(async () => {
+    if (project.tracks.length >= 24) throw new Error('Maximum 24 tracks. Save the instrumental as WAV instead.');
+    const source = project.tracks.find(t => t.id === separationSource!.id);
+    if (!source) throw new Error('The source track is no longer in this project. Save the instrumental as WAV instead.');
+    const instrumental = clone({ ...project, tracks: [source] }).tracks[0];
+    instrumental.id = crypto.randomUUID(); instrumental.name = `${source.name.slice(0, 64)} (Instrumental)`;
+    instrumental.audio = base64(separatedBytes!); instrumental.color = COLORS[2]; instrumental.muted = false;
+    const candidate = { ...project, tracks: [...project.tracks, instrumental] };
+    if (JSON.stringify(candidate).length > MAX_PROJECT_BYTES) throw new Error('Project would exceed 300 MB. Save the instrumental as WAV instead.');
+    const buffer = await engine.buffer(instrumental, project);
+    const neededBars = Math.ceil((instrumental.offset + Math.max(0, buffer.duration - instrumental.trim) / instrumental.rate * project.bpm / 60) / 4);
+    edit(() => {
+      source.muted = true; source.solo = false;
+      project.tracks.push(instrumental); selected = instrumental.id;
+      project.bars = Math.max(project.bars, Math.min(maxBars(project.bpm), neededBars));
+    });
+    separatedBytes = undefined;
+    notify('Instrumental added. Original muted and preserved. Undo restores your previous mix.');
+  });
+}
+
 async function addAudio(files: File[]) {
   if (!files.length) return;
   await task(async () => {
     const additions: Track[] = [];
     for (const file of files) {
       if (project.tracks.length + additions.length >= 24) throw new Error('Maximum 24 tracks per project.');
-      if (file.size > 24 * 1024 * 1024) throw new Error(`${file.name} exceeds 24 MB. Trim or compress it first.`);
+      if (file.size > MAX_AUDIO_BYTES) throw new Error(`${file.name} exceeds 108 MB. Trim or compress it first.`);
       const t = createTrack('audio', project.tracks.length + additions.length);
       t.name = file.name.replace(/\.[^.]+$/, '').slice(0, 80);
       const bytes = new Uint8Array(await file.arrayBuffer());
-      let binary = ''; for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-      t.audio = btoa(binary);
+      t.audio = base64(bytes);
       await engine.buffer(t, project); additions.push(t);
     }
     const candidate = { ...project, tracks: [...project.tracks, ...additions] };
-    if (JSON.stringify(candidate).length > 100 * 1024 * 1024) throw new Error('Project would exceed 100 MB. Use smaller audio files.');
+    if (JSON.stringify(candidate).length > MAX_PROJECT_BYTES) throw new Error('Project would exceed 300 MB. Use smaller audio files.');
     edit(() => { project.tracks.push(...additions); selected = additions[0].id; }, true);
     notify(`${additions.length} audio ${additions.length === 1 ? 'track' : 'tracks'} imported. Ready to remix.`);
   });
@@ -205,7 +284,9 @@ async function addAudio(files: File[]) {
 
 app.addEventListener('click', event => {
   const element = (event.target as HTMLElement).closest<HTMLElement>('button, [data-select]');
-  if (!element || busy) return;
+  if (!element) return;
+  if (element.dataset.action === 'cancel-separation') { void action('cancel-separation'); return; }
+  if (busy) return;
   if (element.dataset.add) {
     if (project.tracks.length >= 24) return notify('Maximum 24 tracks per project.', true);
     edit(() => { const t = createTrack(element.dataset.add as TrackKind, project.tracks.length); project.tracks.push(t); selected = t.id; tab = 'pattern'; }, true);
@@ -225,6 +306,13 @@ app.addEventListener('click', event => {
 
 async function action(name: string) {
   switch (name) {
+    case 'vocal-remover': openVocalRemover(); break;
+    case 'start-separation': await removeVocals(); break;
+    case 'cancel-separation': separationCanceled = true; await window.lemix?.cancelSeparation(); break;
+    case 'close-vocal': if (!separationRunning) { document.querySelector<HTMLDialogElement>('#vocal-dialog')!.close(); separatedBytes = undefined; } break;
+    case 'vocal-import': document.querySelector<HTMLDialogElement>('#vocal-dialog')!.close(); document.querySelector<HTMLInputElement>('#audio-file')!.click(); break;
+    case 'add-instrumental': await addInstrumental(); break;
+    case 'save-instrumental': if (separatedBytes && separationSource) await task(async () => { if (await saveBytes(`${separationSource!.name.slice(0, 64)} (Instrumental)`, 'wav', separatedBytes!)) notify('Full instrumental WAV saved.'); }); break;
     case 'play': if (engine.playing) pause(); else await play(); break;
     case 'stop': clearTimeout(restartTimer); engine.stop(); cursor = 0; render(); break;
     case 'loop': edit(() => { project.loop = !project.loop; }, true); break;
@@ -303,14 +391,14 @@ app.addEventListener('change', event => {
   if (input.id === 'bpm') {
     const value = Number(input.value);
     if (!Number.isFinite(value) || value < 40 || value > 240) { notify('Tempo must be between 40 and 240 BPM.', true); render(); return; }
-    edit(() => { project.bpm = value; cursor = Math.min(cursor, duration(project)); }, true);
+    edit(() => { project.bpm = value; project.bars = Math.min(project.bars, maxBars(value)); project.tracks.forEach(t => { t.offset = Math.min(t.offset, project.bars * 4 - 0.25); }); cursor = Math.min(cursor, duration(project)); }, true);
   }
   if (input.id === 'bars') edit(() => { project.bars = Number(input.value); project.tracks.forEach(t => { t.offset = Math.min(t.offset, project.bars * 4 - 0.25); }); cursor = Math.min(cursor, duration(project)); }, true);
   if (input.id === 'audio-file') void addAudio(Array.from(input.files ?? []));
   if (input.id === 'project-file' && input.files?.[0]) {
     const file = input.files[0];
     void task(async () => {
-      if (file.size > 100 * 1024 * 1024) throw new Error('Project exceeds 100 MB.');
+      if (file.size > MAX_PROJECT_BYTES) throw new Error('Project exceeds 300 MB.');
       const loaded = parseProject(await file.text());
       await engine.prepare(loaded);
       if (dirty && !confirm('Open this project? Unsaved changes will be lost.')) return;
@@ -357,6 +445,9 @@ document.addEventListener('keydown', event => {
     void action(event.key.toLowerCase() === 's' ? 'save' : event.key.toLowerCase() === 'o' ? 'open' : event.shiftKey || event.key.toLowerCase() === 'y' ? 'redo' : 'undo');
   }
 });
+app.addEventListener('cancel', event => {
+  if ((event.target as HTMLElement).id === 'vocal-dialog' && separationRunning) { event.preventDefault(); void action('cancel-separation'); }
+}, true);
 window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
 window.addEventListener('dragover', event => { event.preventDefault(); if (event.dataTransfer?.types.includes('Files')) document.body.classList.add('dragging'); });
 window.addEventListener('dragleave', event => { if (!event.relatedTarget) document.body.classList.remove('dragging'); });
