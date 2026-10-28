@@ -91,13 +91,13 @@ function render() {
           <div class="time-display"><strong id="time">${format(cursor)}</strong><span id="beat-position">BAR 01 · BEAT 1</span></div>
           <label class="tempo"><input id="bpm" type="number" aria-label="Tempo BPM" min="40" max="240" value="${project.bpm}" /><span>BPM</span></label>
           <div class="signature"><strong>4 / 4</strong><span>TIME SIGNATURE</span></div>
-          <label class="length"><select id="bars" aria-label="Arrangement length">${[1, 2, 4, 8, 16, 32].map(n => `<option value="${n}" ${project.bars === n ? 'selected' : ''}>${n} bars</option>`).join('')}</select><span>LENGTH</span></label>
+          <label class="length"><select id="bars" aria-label="Arrangement length">${Array.from({ length: 32 }, (_, i) => i + 1).map(n => `<option value="${n}" ${project.bars === n ? 'selected' : ''}>${n} bars</option>`).join('')}</select><span>LENGTH</span></label>
           <div class="transport-end"><span class="live-dot"></span> ${engine.playing ? 'PLAYING' : 'STUDIO READY'}<div class="mini-level"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
         </section>
         <section class="arrangement" aria-label="Multitrack arrangement">
           <div class="panel-heading"><div><strong>Arrangement</strong><span class="count">${String(project.tracks.length).padStart(2, '0')} TRACKS</span></div><div class="arrangement-tools"><span class="snap-indicator">SNAP · ¼</span><label class="zoom-label">−<input id="zoom" aria-label="Timeline zoom" type="range" min="1" max="3" step="0.25" value="${zoom}"/>+</label><button class="text-button" data-add="keys">${icon('plus')} Add track</button></div></div>
-          <div class="arranger"><div class="track-headers"><div class="track-label">TRACK / INSTRUMENT</div>${project.tracks.map((item, i) => `<div class="track-header ${item.id === selected ? 'selected' : ''}" data-select="${item.id}" style="--accent:${item.color}"><span class="track-number">${String(i + 1).padStart(2, '0')}</span><span class="track-symbol">${icon(kindIcon(item.kind))}</span><button class="track-name" data-select="${item.id}"><strong>${esc(item.name)}</strong><small>${item.kind === 'audio' ? 'AUDIO CLIP' : item.kind === 'drums' ? 'DRUM MACHINE' : 'SYNTHESIZER'}</small></button><div class="track-toggles"><button data-mute="${item.id}" class="${item.muted ? 'muted' : ''}" aria-label="Mute ${esc(item.name)}" aria-pressed="${item.muted}">M</button><button data-solo="${item.id}" class="${item.solo ? 'solo' : ''}" aria-label="Solo ${esc(item.name)}" aria-pressed="${item.solo}">S</button></div></div>`).join('')}<button class="add-track-row" data-add="keys">${icon('plus')} Add instrument track</button></div>
-          <div class="arranger-scroll"><div class="timeline" style="width:${zoom * 100}%;--bars:${project.bars}"><div class="ruler" aria-label="Seek timeline">${Array.from({ length: project.bars }, (_, i) => `<span>${i + 1}<small>.1</small></span>`).join('')}</div><div class="timeline-lanes">${project.tracks.map(item => `<div class="lane ${item.id === selected ? 'selected' : ''}" data-lane="${item.id}" style="--accent:${item.color}"><div class="audio-clip ${item.muted ? 'clip-muted' : ''}" data-clip="${item.id}" style="left:${item.offset / (project.bars * 4) * 100}%;width:${Math.max(0, 100 - item.offset / (project.bars * 4) * 100)}%"><span>${icon(kindIcon(item.kind))}${esc(item.name)}<small>${item.reverse ? 'REV' : item.kind === 'audio' ? 'AUDIO' : 'LOOP'}</small></span><canvas data-wave="${item.id}"></canvas></div></div>`).join('')}</div><div id="playhead" class="playhead" style="left:${cursor / duration(project) * 100}%"><i></i></div></div></div></div>
+          <div class="arranger-viewport"><div class="arranger"><div class="track-headers"><div class="track-label">TRACK / INSTRUMENT</div>${project.tracks.map((item, i) => `<div class="track-header ${item.id === selected ? 'selected' : ''}" data-select="${item.id}" style="--accent:${item.color}"><span class="track-number">${String(i + 1).padStart(2, '0')}</span><span class="track-symbol">${icon(kindIcon(item.kind))}</span><button class="track-name" data-select="${item.id}"><strong>${esc(item.name)}</strong><small>${item.kind === 'audio' ? 'AUDIO CLIP' : item.kind === 'drums' ? 'DRUM MACHINE' : 'SYNTHESIZER'}</small></button><div class="track-toggles"><button data-mute="${item.id}" class="${item.muted ? 'muted' : ''}" aria-label="Mute ${esc(item.name)}" aria-pressed="${item.muted}">M</button><button data-solo="${item.id}" class="${item.solo ? 'solo' : ''}" aria-label="Solo ${esc(item.name)}" aria-pressed="${item.solo}">S</button></div></div>`).join('')}<button class="add-track-row" data-add="keys">${icon('plus')} Add instrument track</button></div>
+          <div class="arranger-scroll"><div class="timeline" style="width:${zoom * 100}%;--bars:${project.bars}"><div class="ruler" aria-label="Seek timeline">${Array.from({ length: project.bars }, (_, i) => `<span>${i + 1}<small>.1</small></span>`).join('')}</div><div class="timeline-lanes">${project.tracks.map(item => `<div class="lane ${item.id === selected ? 'selected' : ''}" data-lane="${item.id}" style="--accent:${item.color}"><div class="audio-clip ${item.muted ? 'clip-muted' : ''}" data-clip="${item.id}" style="left:${item.offset / (project.bars * 4) * 100}%;width:${Math.max(0, 100 - item.offset / (project.bars * 4) * 100)}%"><span>${icon(kindIcon(item.kind))}${esc(item.name)}<small>${item.reverse ? 'REV' : item.kind === 'audio' ? 'AUDIO' : 'LOOP'}</small></span><canvas data-wave="${item.id}"></canvas></div></div>`).join('')}</div><div id="playhead" class="playhead" style="left:${cursor / duration(project) * 100}%"><i></i></div></div></div></div></div>
           ${!project.tracks.length ? '<div class="empty-state">A little silence. A lot of possibility.<small>Add an instrument or drop in an audio file to begin.</small></div>' : ''}
           <div class="arrangement-footer"><span>${icon('wave')} ${project.bars * 4} beats <i>·</i> C minor <i>·</i> ${format(duration(project))}</span><span>Click ruler to seek <i>·</i> Drag clips to arrange</span></div>
         </section>
@@ -143,7 +143,7 @@ async function drawWaves(version: number) {
     try {
       const buffer = await engine.buffer(t, project);
       if (version !== revision) return;
-      if (t.id === selected) document.querySelector<HTMLInputElement>('[data-control="trim"]')!.max = Math.max(0.1, buffer.duration - 0.1).toFixed(1);
+      if (t.id === selected) document.querySelector<HTMLInputElement>('[data-control="trim"]')!.max = Math.max(t.trim, 0.1, buffer.duration - 0.1).toFixed(1);
       const canvas = document.querySelector<HTMLCanvasElement>(`canvas[data-wave="${t.id}"]`);
       if (!canvas) continue;
       const clip = canvas.parentElement!;
@@ -340,14 +340,18 @@ app.addEventListener('pointerdown', event => {
     t.offset = Math.max(0, Math.min(project.bars * 4 - 0.25, Math.round((original + (event.clientX - x) / width * project.bars * 4) * 4) / 4));
     clip.style.left = `${t.offset / (project.bars * 4) * 100}%`;
   };
-  const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); if (moved) changed(true); render(); };
-  document.addEventListener('pointermove', move); document.addEventListener('pointerup', up, { once: true });
+  const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); if (moved) changed(true); render(); };
+  document.addEventListener('pointermove', move); document.addEventListener('pointerup', up, { once: true }); document.addEventListener('pointercancel', up, { once: true });
 });
 
 document.addEventListener('keydown', event => {
   const target = event.target as HTMLElement;
-  if (target.closest('input, select, textarea, dialog') || busy) return;
-  if (event.code === 'Space') { event.preventDefault(); void action('play'); }
+  if (target.closest('dialog') || busy) return;
+  if ((event.ctrlKey || event.metaKey) && ['s', 'o'].includes(event.key.toLowerCase())) {
+    event.preventDefault(); target.blur(); void action(event.key.toLowerCase() === 's' ? 'save' : 'open'); return;
+  }
+  if (target.closest('input, select, textarea')) return;
+  if (event.code === 'Space' && !target.closest('button')) { event.preventDefault(); void action('play'); }
   if ((event.ctrlKey || event.metaKey) && ['s', 'o', 'z', 'y'].includes(event.key.toLowerCase())) {
     event.preventDefault();
     void action(event.key.toLowerCase() === 's' ? 'save' : event.key.toLowerCase() === 'o' ? 'open' : event.shiftKey || event.key.toLowerCase() === 'y' ? 'redo' : 'undo');
