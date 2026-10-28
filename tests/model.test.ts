@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { audible, createSource, createInstrument, createClip, cloneProject, demoProject, duration, encodeWav, parseProject, maxBars } from '../src/model.ts';
+import { INSTRUMENTS, audible, createSource, createInstrument, createClip, cloneProject, demoProject, duration, encodeWav, parseProject, maxBars } from '../src/model.ts';
 import { synthesize } from '../src/synthesis.ts';
 
 test('demo round trips with independent patterns and valid duration', () => {
@@ -108,7 +108,7 @@ test('WAV has correct stereo headers, interleaving, clipping and finite samples'
 });
 
 test('synthesized patterns produce repeatable finite audio and honor empty notes/steps', () => {
-  for (const kind of ['drums', 'bass', 'keys', 'pad'] as const) {
+  for (const kind of Object.keys(INSTRUMENTS) as (keyof typeof INSTRUMENTS)[]) {
     const track = createSource(kind);
     const samples = synthesize(track, 120, 1, 8000);
     assert.equal(samples.length, 16000);
@@ -120,4 +120,27 @@ test('synthesized patterns produce repeatable finite audio and honor empty notes
       assert.ok(synthesize(track, 120, 1, 8000).every(sample => sample === 0));
     }
   }
+});
+
+for (const kind of ['piano', 'guitar', 'marimba', 'organ', 'lead'] as const) {
+  test(`${kind} has its own finite note voice, silent release and a saveable source`, () => {
+    const p = demoProject(); const instrument = createInstrument(kind, p.tracks.length);
+    p.sources.push(instrument.source); p.tracks.push(instrument.track);
+    assert.equal(instrument.source.name, INSTRUMENTS[kind].name);
+    assert.equal(parseProject(JSON.stringify(p)).sources.at(-1)!.kind, kind);
+    instrument.source.notes.fill(-1); instrument.source.notes[0] = 0;
+    const pcm = synthesize(instrument.source, 120, 1);
+    assert.equal(pcm[0], 0); assert.ok(pcm.every(Number.isFinite));
+    assert.ok(pcm.some(sample => Math.abs(sample) > 0.05));
+    assert.ok(pcm.slice(-4410).every(sample => sample === 0));
+    assert.ok(pcm.every(sample => Math.abs(sample) <= 1));
+    const old = createSource('keys'); old.notes = [...instrument.source.notes];
+    assert.notDeepEqual(pcm, synthesize(old, 120, 1));
+  });
+}
+
+test('instrument catalog has nine independent instrument sources and rejects prototype keys', () => {
+  assert.equal(Object.keys(INSTRUMENTS).length, 9);
+  const p = demoProject(); (p.sources[0] as { kind: string }).kind = 'constructor';
+  assert.throws(() => parseProject(JSON.stringify(p)));
 });

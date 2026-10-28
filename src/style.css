@@ -41,3 +41,12 @@ main{padding:29px 24px 0;min-width:0;background:radial-gradient(ellipse at 30% 0
 .inspector-mode button { flex: 1; padding: 7px 4px; font-size: 9px; color: #777d93; border-radius: 3px; }
 .inspector-mode button.active { color: var(--purple); background: #b2a1ff13; }
 .inspector-mode + .selected-channel { margin-top: 16px; }
+.browser { overflow: hidden; }
+.browser > :not(.library) { flex-shrink: 0; }
+.browser-title { margin-top: 18px; margin-bottom: 14px; }
+.library { flex: 1; min-height: 64px; overflow-y: auto; gap: 4px; padding-right: 4px; scrollbar-width: thin; scrollbar-color: #494254 transparent; }
+.sound-card { flex-shrink: 0; padding-top: 8px; padding-bottom: 8px; }
+.sound-card small { line-height: 1.5; }
+.import-area { padding: 14px 8px; margin-top: 16px; margin-bottom: 12px; gap: 7px; }
+.browser-bottom { margin-top: 0; padding-top: 18px; }
+@media (max-height: 950px) { .browser-bottom { display: none; } }

@@ -1,4 +1,5 @@
 import type { Source } from './model.ts';
+import { INSTRUMENTS } from './model.ts';
 
 export function synthesize(track: Source, bpm: number, bars: number, sampleRate = 44100): Float32Array {
   const beat = 60 / bpm;
@@ -28,13 +29,22 @@ export function synthesize(track: Source, bpm: number, bars: number, sampleRate 
         add(bar * 4 * beat, 4 * beat, (t, progress) =>
           (Math.sin(t * hz * 2 * Math.PI) + Math.sin(t * hz * 1.003 * 2 * Math.PI) * 0.45) * Math.sin(Math.PI * progress) ** 0.7 * 0.15);
       }
-    } else if (track.kind === 'keys' || track.kind === 'bass') {
+    } else if (track.kind !== 'audio') {
+      const kind = track.kind;
       for (let step = 0; step < 16; step++) {
         const note = track.notes[step];
         if (note < 0) continue;
-        const hz = frequency((track.kind === 'bass' ? 36 : 60) + root + note);
-        add((bar * 4 + step / 4) * beat, beat * (track.kind === 'bass' ? 0.65 : 1.2), (t, progress) => {
+        const hz = frequency(INSTRUMENTS[kind].midi + root + note);
+        const length = kind === 'bass' ? 0.65 : kind === 'piano' ? 2.4 : kind === 'guitar' ? 2 : kind === 'marimba' ? 1.8 : kind === 'organ' ? 0.95 : kind === 'lead' ? 0.7 : 1.2;
+        add((bar * 4 + step / 4) * beat, beat * length, (t, progress) => {
           const phase = t * hz * 2 * Math.PI;
+          const attack = Math.min(1, t / 0.005);
+          const release = Math.min(1, (1 - progress) / 0.15);
+          if (kind === 'piano') return attack * release * (Math.sin(phase) * Math.exp(-t * 2.4) + Math.sin(phase * 2) * 0.32 * Math.exp(-t * 4) + Math.sin(phase * 3.003) * 0.12 * Math.exp(-t * 6)) * 0.42;
+          if (kind === 'guitar') return attack * release * (Math.sin(phase) + Math.sin(phase * 2) * 0.4 * Math.exp(-t * 3) + Math.sin(phase * 3) * 0.2 * Math.exp(-t * 5) + Math.sin(phase * 4) * 0.08 * Math.exp(-t * 7)) * Math.exp(-t * 3.5) * 0.45;
+          if (kind === 'marimba') return attack * release * (Math.sin(phase) * Math.exp(-t * 4) + Math.sin(phase * 3.99) * 0.28 * Math.exp(-t * 12) + Math.sin(phase * 10.01) * 0.08 * Math.exp(-t * 20)) * 0.5;
+          if (kind === 'organ') return Math.min(1, t / 0.012) * release * (Math.sin(phase) + Math.sin(phase / 2) * 0.35 + Math.sin(phase * 2) * 0.3 + Math.sin(phase * 3) * 0.15 + Math.sin(phase * 4) * 0.08) * 0.35;
+          if (kind === 'lead') return attack * release * (Math.sin(phase) + Math.sin(phase * 2) * 0.5 + Math.sin(phase * 3) * 0.33 + Math.sin(phase * 4) * 0.25 + Math.sin(phase * 5) * 0.2) * Math.exp(-t * 1.8) * 0.4;
           const envelope = Math.min(1, t / 0.008) * (1 - progress) * Math.exp(-t * (track.kind === 'bass' ? 5 : 3));
           return (Math.sin(phase) + Math.sin(phase * 2) * 0.25 + Math.sin(phase * 3) * 0.1) * envelope * 0.65;
         });

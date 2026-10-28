@@ -3,7 +3,18 @@ export const DRUMS = ['Kick', 'Snare', 'Hi-hat', 'Clap'] as const;
 export const MAX_PROJECT_BYTES = 300 * 1024 * 1024;
 export const MAX_AUDIO_BYTES = 108 * 1024 * 1024;
 export const maxBars = (bpm: number) => Math.min(600, Math.floor(612 * bpm / 240));
-export type TrackKind = 'drums' | 'bass' | 'keys' | 'pad' | 'audio';
+export const INSTRUMENTS = {
+  drums: { name: 'Drum machine', description: '16-step rhythm builder', midi: 60, icon: 'drum' },
+  bass: { name: 'Analog bass', description: 'Warm · deep · rounded', midi: 36, icon: 'keys' },
+  keys: { name: 'Electric keys', description: 'Soft · melodic · mellow', midi: 60, icon: 'keys' },
+  pad: { name: 'Ambient pad', description: 'Wide · airy · evolving', midi: 48, icon: 'spark' },
+  piano: { name: 'Studio piano', description: 'Bright · expressive · soft decay', midi: 60, icon: 'keys' },
+  guitar: { name: 'Nylon guitar', description: 'Plucked · warm · intimate', midi: 48, icon: 'guitar' },
+  marimba: { name: 'Wood marimba', description: 'Woody · percussive · bright', midi: 72, icon: 'mallets' },
+  organ: { name: 'Drawbar organ', description: 'Round · sustained · rich', midi: 60, icon: 'keys' },
+  lead: { name: 'Synth lead', description: 'Bold · bright · cutting', midi: 72, icon: 'wave' },
+} as const;
+export type TrackKind = keyof typeof INSTRUMENTS | 'audio';
 export interface Effects {
   low: number; mid: number; high: number; cutoff: number;
   drive: number; reverb: number; delay: number; compression: number;
@@ -34,7 +45,7 @@ export function createLayer(index: number, name = `Audio layer ${index + 1}`): T
 export const createClip = (source: Source): Clip => ({ id: crypto.randomUUID(), sourceId: source.id, name: source.name, offset: 0, trim: 0, length: null, rate: 1, reverse: false, gain: 1, muted: false, effects: neutralEffects() });
 export function createSource(kind: TrackKind): Source {
   return {
-    id: crypto.randomUUID(), name: ({ drums: 'Drum machine', bass: 'Analog bass', keys: 'Electric keys', pad: 'Ambient pad', audio: 'Audio track' })[kind],
+    id: crypto.randomUUID(), name: kind === 'audio' ? 'Audio track' : INSTRUMENTS[kind].name,
     kind,
     steps: DRUMS.map((_, row) => Array.from({ length: 16 }, (__, step) =>
       row === 0 ? step % 4 === 0 : row === 1 ? step % 8 === 4 : row === 2 ? step % 2 === 0 : step === 12)),
@@ -70,7 +81,7 @@ function validEffects(fx: unknown) {
     ['drive', 'reverb', 'delay', 'compression'].every(key => numberIn(fx[key], 0, 1));
 }
 function validSource(s: Record<string, unknown>) {
-  return uuid(s.id) && name(s.name) && ['drums', 'bass', 'keys', 'pad', 'audio'].includes(String(s.kind)) &&
+  return uuid(s.id) && name(s.name) && typeof s.kind === 'string' && (s.kind === 'audio' || Object.hasOwn(INSTRUMENTS, s.kind)) &&
     Array.isArray(s.steps) && s.steps.length === 4 && s.steps.every(row => Array.isArray(row) && row.length === 16 && row.every(v => typeof v === 'boolean')) &&
     Array.isArray(s.notes) && s.notes.length === 16 && s.notes.every(n => numberIn(n, -1, 12) && Number.isInteger(n)) &&
     (s.kind === 'audio' ? typeof s.audio === 'string' && s.audio.length > 0 && s.audio.length % 4 === 0 && s.audio.length <= MAX_AUDIO_BYTES * 4 / 3 && /^[A-Za-z0-9+/]*={0,2}$/.test(s.audio) : s.audio === undefined);

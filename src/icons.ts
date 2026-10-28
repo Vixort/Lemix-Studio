@@ -1,4 +1,6 @@
 const paths: Record<string, string> = {
+  guitar: '<path d="m14 9 6-6 1 1-6 6m-2-2 3 3M7 9c-3-1-6 2-4 5-2 4 2 8 6 6 3 2 6-1 5-4 3-1 3-5 0-6-1-3-5-3-7-1Z"/><circle cx="9" cy="15" r="2"/><path d="m7 17-2 2"/>',
+  mallets: '<rect x="3" y="15" width="4" height="6" rx="1"/><rect x="9" y="12" width="4" height="9" rx="1"/><rect x="15" y="9" width="4" height="12" rx="1"/><path d="m4 3 8 7m5-8-6 7"/><circle cx="3" cy="3" r="1"/><circle cx="18" cy="2" r="1"/>',
   scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8 8 13 13M8 16 21 3"/>',
   cursor: '<path d="m4 3 5 18 3-7 7-3z"/>',
   play: '<path d="m8 5 11 7-11 7z"/>',

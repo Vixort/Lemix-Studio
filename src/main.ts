@@ -1,6 +1,6 @@
 import './style.css';
 import { AudioEngine } from './audio.ts';
-import { COLORS, DRUMS, MAX_AUDIO_BYTES, MAX_PROJECT_BYTES, createSource, createLayer, createInstrument, createClip, cloneClip, cloneProject, pruneSources, neutralEffects, demoProject, duration, parseProject, maxBars, encodeWav } from './model.ts';
+import { COLORS, DRUMS, INSTRUMENTS, MAX_AUDIO_BYTES, MAX_PROJECT_BYTES, createSource, createLayer, createInstrument, createClip, cloneClip, cloneProject, pruneSources, neutralEffects, demoProject, duration, parseProject, maxBars, encodeWav } from './model.ts';
 import type { Clip, Effects, Project, Source, Track, TrackKind } from './model.ts';
 import { icon } from './icons.ts';
 import { clipDuration, clipCount, layoutClips, moveClip, snapBeat, splitClip, trimClip } from './timeline.ts';
@@ -44,7 +44,7 @@ function selectTrack(id: string) { selected = id; selectedClip = track()?.clips[
 function selectClip(t: Track, c: Clip) { selected = t.id; selectedClip = c.id; inspectorMode = 'clip'; revealSelection = true; }
 function sanitizeSelection() { if (!track()) selected = project.tracks[0]?.id ?? ''; if (!clip()) selectedClip = track()?.clips[0]?.id ?? ''; if (!clip()) inspectorMode = 'track'; }
 function fitTimeline() { const end = Math.max(0, ...project.tracks.flatMap(t => t.clips.map(c => c.offset * 60 / project.bpm + clipDuration(c, sourceDuration(c.sourceId))))); project.bars = Math.max(project.bars, Math.min(maxBars(project.bpm), Math.ceil(end * project.bpm / 240))); }
-const kindIcon = (kind: TrackKind) => kind === 'drums' ? 'drum' : kind === 'audio' ? 'wave' : 'keys';
+const kindIcon = (kind: TrackKind) => kind === 'audio' ? 'wave' : INSTRUMENTS[kind].icon;
 const button = (action: string, symbol: string, label: string, extra = '') => `<button class="icon-button" data-action="${action}" title="${label}" aria-label="${label}" ${extra}>${icon(symbol)}</button>`;
 const format = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
 
@@ -84,11 +84,17 @@ function slider(label: string, key: string, value: number, min: number, max: num
   return `<label class="control ${color}"><span>${label}<output>${display}</output></span><input aria-label="${label}" data-control="${key}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" /></label>`;
 }
 
+function filterLibrary(query: string) {
+  for (const card of document.querySelectorAll<HTMLElement>('[data-search]')) card.hidden = !card.dataset.search!.includes(query.toLowerCase());
+}
+
 function render() {
   editing = false;
   const t = track();
   const scroll = document.querySelector('.arranger-scroll')?.scrollLeft ?? 0;
   const verticalScroll = document.querySelector('.arranger-viewport')?.scrollTop ?? 0;
+  const libraryScroll = document.querySelector('.library')?.scrollTop ?? 0;
+  const libraryQuery = document.querySelector<HTMLInputElement>('#search')?.value ?? '';
   const reveal = revealSelection; revealSelection = false;
   app.innerHTML = `
     <header class="topbar">
@@ -102,10 +108,10 @@ function render() {
         <button class="nav-item active" data-action="arrangement">${icon('sliders')} Arrangement <span>01</span></button>
         <button class="nav-item" data-action="mixer">${icon('headphones')} Mixer <span>${project.tracks.length}</span></button>
         <button class="nav-item ai-tool" data-action="vocal-remover">${icon('spark')} Vocal Remover <span>AI</span></button>
-        <div class="browser-title">SOUND LIBRARY <span class="pill">BUILT-IN</span></div>
+        <div class="browser-title">SOUND LIBRARY <span class="pill">${Object.keys(INSTRUMENTS).length} SOUNDS</span></div>
         <label class="search">${icon('search')}<input id="search" placeholder="Find your sound…" aria-label="Search instruments" /></label>
         <div class="library">
-          ${([['drums', 'Drum machine', '16-step rhythm builder', '01'], ['bass', 'Analog bass', 'Warm · deep · rounded', '02'], ['keys', 'Electric keys', 'Soft · melodic · mellow', '03'], ['pad', 'Ambient pad', 'Wide · airy · evolving', '04']] as const).map(([kind, name, description, number], i) => `<button class="sound-card" data-add="${kind}" data-search="${name.toLowerCase()}" style="--accent:${COLORS[i]}"><span class="sound-art">${icon(kindIcon(kind))}</span><span><strong>${name}</strong><small>${description}</small></span><span class="sound-add">+</span><span class="sound-number">${number}</span></button>`).join('')}
+          ${Object.entries(INSTRUMENTS).map(([kind, instrument], i) => `<button class="sound-card" data-add="${kind}" data-search="${instrument.name.toLowerCase()}" style="--accent:${COLORS[i % COLORS.length]}"><span class="sound-art">${icon(instrument.icon)}</span><span><strong>${instrument.name}</strong><small>${instrument.description}</small></span><span class="sound-add">+</span><span class="sound-number">${String(i + 1).padStart(2, '0')}</span></button>`).join('')}
         </div>
         <button class="import-area" data-action="import">${icon('import')}<strong>Bring your own sound</strong><span>Import WAV, MP3, OGG or FLAC</span><small>or drop an audio file anywhere</small></button>
         <div class="browser-bottom"><span class="online-dot"></span> ALL LOCAL. ALL YOURS.<p>No cloud. Just your creativity.</p></div>
@@ -138,6 +144,9 @@ function render() {
     <dialog id="help-dialog"><button class="dialog-close" data-action="close-help" aria-label="Close help">×</button><span class="eyebrow">WELCOME TO YOUR STUDIO</span><h2>Make something that sounds like you.</h2><p>Press Space to play the demo. Add an instrument from the library or import your own audio. Drag a clip to move it, then shape its sound in the channel strip.</p><p>Click steps to build a beat, or notes to write a melody. Patterns repeat every bar; the built-in progression moves through C minor, F minor, E♭ minor and G minor.</p><dl><dt>Space</dt><dd>Play / pause</dd><dt>Ctrl / ⌘ + S</dt><dd>Save a self-contained .lemix project</dd><dt>Ctrl / ⌘ + O</dt><dd>Open a project</dd><dt>Ctrl / ⌘ + Z</dt><dd>Undo</dd><dt>Ctrl / ⌘ + Shift + Z</dt><dd>Redo</dd></dl><p>Export creates a 44.1 kHz stereo WAV with the current mix and a two-second effect tail. Speed changes pitch too. Save your work before closing.</p><button class="export-button" data-action="close-help">Let's make some noise ${icon('chevron')}</button></dialog>`;
   document.querySelector('.arranger-scroll')!.scrollLeft = scroll;
   document.querySelector('.arranger-viewport')!.scrollTop = verticalScroll;
+  document.querySelector<HTMLInputElement>('#search')!.value = libraryQuery;
+  filterLibrary(libraryQuery);
+  document.querySelector('.library')!.scrollTop = libraryScroll;
   const version = ++revision;
   void drawWaves(version).then(() => {
     if (version === revision && reveal) (document.querySelector<HTMLElement>(`[data-clip="${selectedClip}"]`) ?? document.querySelector<HTMLElement>(`[data-lane="${selected}"]`))?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -150,7 +159,8 @@ function pattern(t?: Track) {
   const headings = `<div class="step-ruler"><span></span>${Array.from({ length: 16 }, (_, i) => `<span>${i % 4 === 0 ? i / 4 + 1 : '·'}</span>`).join('')}</div>`;
   if (content.kind === 'audio') return `<div class="audio-editor"><span class="audio-editor-icon" style="color:${t.color}">${icon('wave')}</span><div><h3>${esc(t.name)}</h3><p>Give the music its own space. Separate vocals with local AI, or shape your clip with the channel strip.</p><span class="pill">SHARED SOURCE IN PROJECT</span></div><div class="audio-editor-actions"><button class="export-button" data-action="vocal-remover">${icon('spark')} Remove vocals</button><button class="text-button" data-action="import">${icon('plus')} Import another</button></div></div>`;
   if (content.kind === 'pad') return `<div class="audio-editor"><span class="audio-editor-icon" style="color:${t.color}">${icon('spark')}</span><div><h3>A little atmosphere goes a long way.</h3><p>A slowly evolving minor chord progression. Try a warm low-pass filter and a generous touch of reverb.</p><span class="pill">C m → F m → E♭ m → G m</span></div></div>`;
-  return `<div class="pattern-content" style="--accent:${t.color}"><div class="pattern-title"><span class="color-dot" style="background:${t.color}"></span><strong>${esc(t.name)}</strong><span>${content.kind === 'drums' ? '16 STEPS · 1/16' : 'C MINOR · 1/16'}</span><button class="text-button" data-action="clear-pattern">Clear pattern</button></div>${headings}${content.kind === 'drums' ? DRUMS.map((name, row) => `<div class="step-row"><span><small>${String(row + 1).padStart(2, '0')}</small>${name}</span>${content.steps[row].map((on, step) => `<button data-step="${row}:${step}" data-column="${step}" class="step ${on ? 'on' : ''} ${step % 4 === 0 ? 'group-start' : ''}" aria-label="${name} step ${step + 1}" aria-pressed="${on}"></button>`).join('')}</div>`).join('') : [12, 10, 7, 5, 3, 2, 0].map(note => `<div class="note-row"><span>${({ 0: 'C', 2: 'D', 3: 'E♭', 5: 'F', 7: 'G', 10: 'B♭', 12: 'C' } as Record<number, string>)[note]}<small>${content.kind === 'bass' ? '2' : '4'}</small></span>${content.notes.map((n, step) => `<button data-note="${note}:${step}" data-column="${step}" class="note ${n === note ? 'on' : ''}" aria-label="Note ${note}, step ${step + 1}" aria-pressed="${n === note}"></button>`).join('')}</div>`).join('')}</div>`;
+  const baseMidi = INSTRUMENTS[content.kind].midi;
+  return `<div class="pattern-content" style="--accent:${t.color}"><div class="pattern-title"><span class="color-dot" style="background:${t.color}"></span><strong>${esc(t.name)}</strong><span>${content.kind === 'drums' ? '16 STEPS · 1/16' : 'C MINOR · 1/16'}</span><button class="text-button" data-action="clear-pattern">Clear pattern</button></div>${headings}${content.kind === 'drums' ? DRUMS.map((name, row) => `<div class="step-row"><span><small>${String(row + 1).padStart(2, '0')}</small>${name}</span>${content.steps[row].map((on, step) => `<button data-step="${row}:${step}" data-column="${step}" class="step ${on ? 'on' : ''} ${step % 4 === 0 ? 'group-start' : ''}" aria-label="${name} step ${step + 1}" aria-pressed="${on}"></button>`).join('')}</div>`).join('') : [12, 10, 7, 5, 3, 2, 0].map(note => `<div class="note-row"><span>${({ 0: 'C', 2: 'D', 3: 'E♭', 5: 'F', 7: 'G', 10: 'B♭', 12: 'C' } as Record<number, string>)[note]}<small>${Math.floor((baseMidi + note) / 12) - 1}</small></span>${content.notes.map((n, step) => `<button data-note="${note}:${step}" data-column="${step}" class="note ${n === note ? 'on' : ''}" aria-label="Note ${note}, step ${step + 1}" aria-pressed="${n === note}"></button>`).join('')}</div>`).join('')}</div>`;
 }
 
 function mixer() {
@@ -435,7 +445,7 @@ async function action(name: string) {
 app.addEventListener('input', event => {
   const input = event.target as HTMLInputElement;
   if (input.id === 'search') {
-    for (const card of document.querySelectorAll<HTMLElement>('[data-search]')) card.hidden = !card.dataset.search!.includes(input.value.toLowerCase());
+    filterLibrary(input.value);
     return;
   }
   if (input.id === 'zoom') { zoom = Number(input.value); document.querySelector<HTMLElement>('.timeline')!.style.width = `${zoom * 100}%`; void drawWaves(++revision); return; }

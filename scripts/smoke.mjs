@@ -45,6 +45,35 @@ app.on('browser-window-created', (_event, window) => {
       window.hide();
       console.log('PASS: secure Electron window and four rendered demo tracks');
 
+      assert.equal(await run(`document.querySelectorAll('.sound-card').length`),9);
+      let previousInstrumentWav;
+      for (const kind of ['piano','guitar','marimba','organ','lead']) {
+        await run(`{const input=document.querySelector('#search');input.value=${JSON.stringify(kind)};input.dispatchEvent(new Event('input',{bubbles:true}));}`);
+        assert.equal(await run(`document.querySelectorAll('.sound-card:not([hidden])').length`),1);
+        await click(`[data-add="${kind}"]`); assert.equal(await count(),5);
+        assert.equal(await run(`document.querySelector('#search').value`),kind);
+        await click('[data-note="3:1"]');
+        assert.equal(await run(`document.querySelector('[data-note="3:1"]').getAttribute('aria-pressed')`),'true');
+        await run(`document.querySelectorAll('.track-header [data-solo]')[4].click()`);
+        await click('[data-action="save"]'); await waitFor(`!document.body.classList.contains('busy')`,'Instrument project did not save');
+        const instrumentProject=JSON.parse(await readFile(path.join(output,'test-project.lemix'),'utf8'));
+        const instrumentSource=instrumentProject.sources.find(s=>s.id===instrumentProject.tracks[4].clips[0].sourceId);
+        assert.equal(instrumentSource.kind,kind); assert.equal(instrumentSource.notes[1],3);
+        await click('[data-action="export"]'); await waitFor(`!document.body.classList.contains('busy')`,'Instrument WAV did not finish');
+        const instrumentWav=await readFile(path.join(output,'test-mix.wav'));
+        let peak=0; for(let i=44;i<instrumentWav.length;i+=2)peak=Math.max(peak,Math.abs(instrumentWav.readInt16LE(i)));
+        assert.ok(peak>1000,`${kind} did not produce audible PCM`);
+        if(previousInstrumentWav)assert.ok(!instrumentWav.equals(previousInstrumentWav),`${kind} duplicated the previous instrument voice`);
+        previousInstrumentWav=instrumentWav;
+        if(kind==='lead') {
+          await run(`{const input=document.querySelector('#search');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.library').scrollTop=document.querySelector('.library').scrollHeight;}`);
+          window.showInactive(); await sleep(400);
+          await writeFile(path.join(output,'instruments.png'),(await window.webContents.capturePage()).toPNG()); window.hide();
+        }
+        await click('[data-action="delete"]'); assert.equal(await count(),4);
+      }
+      console.log('PASS: five new instruments can be found, added, edited, saved and exported as distinct non-silent WAVs');
+
       await click('[data-add="bass"]'); assert.equal(await count(), 5);
       await click('[data-action="undo"]'); assert.equal(await count(), 4);
       await click('[data-action="redo"]'); assert.equal(await count(), 5);
