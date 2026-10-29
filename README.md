@@ -1,117 +1,153 @@
 # Lemix Studio
 
-โปรแกรมแต่งเพลงและรีมิกซ์เสียงสำหรับเดสก์ท็อป สร้างด้วย **Electron + TypeScript + Vite** ใช้ Web Audio ประมวลผลเสียงจริง ทำงานออฟไลน์โดยไม่ต้องมีบัญชีหรือส่งไฟล์เสียงไปยังเซิร์ฟเวอร์
+**Lemix Studio** is an offline desktop music and remix studio built with **Electron, TypeScript and Vite**. It uses the Web Audio API for real audio processing, so you can compose beats and melodies, cut and arrange audio clips, repair noisy recordings and strip vocals from songs with local AI models — all without an account and without uploading your audio anywhere.
 
-## เริ่มใช้งาน
+> Download the latest Windows portable build from the [Releases](https://github.com/Vixort/Lemix-Studio/releases) page. No installation is required; just run `Lemix-Studio-<version>.exe`. The executable is not code-signed yet, so Windows SmartScreen may show a warning.
 
-ต้องมี Node.js **22.18+ หรือ 24+** และ npm การติดตั้งครั้งแรกต้องใช้อินเทอร์เน็ตเพื่อดาวน์โหลด dependencies และ Electron runtime
+## Features
+
+- **Arrangement:** up to 24 layers and 512 clips. Place several files on one layer, drag clips across layers, split with the Razor tool, trim both edges, and duplicate or delete non-destructively. Includes waveforms, toggleable snap, seek, zoom and loop.
+- **Beat making:** a 16-step drum machine with kick, snare, hi-hat and clap.
+- **Sound Library:** 9 instruments — Drum machine, Analog bass, Electric keys, Ambient pad, Studio piano, Nylon guitar, Wood marimba, Drawbar organ and Synth lead — with search and a scrollable list.
+- **Melody writing:** a note grid for bass, keys and the five newer instruments, showing the octave that actually plays. The pad builds ambient chords. Patterns repeat every bar and the progression changes every 2 bars.
+- **Audio import:** pick or drag in WAV, MP3, OGG, FLAC or any format Chromium supports (up to 108 MB and 10 minutes per file).
+- **AI Vocal Remover:** choose MDX-Net, BS-RoFormer ViperX (uint8/FP32), Mel-Band RoFormer FP32 or a local Ensemble, with a 4 s or 8 s context window. Save the instrumental as WAV or add it as a new layer to keep remixing. Progress and cancel are supported. Shortcuts open the MVSEP website for its 124-band and Ensemble models without uploading anything from the app.
+- **Audio Repair:** drag Noise Reduction, Click / Pop Repair or Clean Audio onto a clip to reduce hiss and fix short clicks. Adjust strength, A/B with Bypass, and undo. Applied both during playback and WAV export.
+- **Clip tools:** per-clip gain and mute, reverse, playback speed 0.5–2× (changes pitch too), and effects independent of the layer mixer.
+- **Mixing:** volume, stereo pan, mute/solo and a master mixer for all tracks.
+- **Tone shaping:** 3-band EQ, low-pass filter, drive, compressor, convolution room reverb and dotted delay, plus a master limiter.
+- **Project management:** rename tracks, duplicate/delete, 24-step undo/redo and a warning before closing unsaved work.
+- **`.lemix` projects:** settings, patterns and imported audio are stored in a single project file (up to 300 MB total, timeline up to about 10 minutes).
+- **WAV export:** stereo 16-bit PCM / 44.1 kHz with a 2-second effect tail, rendered through the same effect chain used for live playback.
+
+## Getting started (from source)
+
+Requires Node.js **22.18+ or 24+** and npm. The first install needs internet access to download dependencies and the Electron runtime.
 
 ```powershell
 npm.cmd ci
 npm.cmd run dev
 ```
 
-บน PowerShell ใช้ `npm.cmd` ได้แม้เครื่องปิดการรันไฟล์ `npm.ps1` อยู่ บน macOS/Linux ใช้ `npm` ตามปกติ
+On PowerShell, `npm.cmd` works even when running `npm.ps1` is blocked. On macOS/Linux use `npm` as usual.
 
-เปิดโปรแกรมจาก production build:
+Run a production build:
 
 ```powershell
 npm.cmd run build
 npm.cmd start
 ```
 
-สร้างแอป Windows แบบ portable:
+Build the Windows portable app:
 
 ```powershell
 npm.cmd run dist
 ```
 
-ไฟล์จะอยู่ที่ `release/Lemix-Studio-0.7.0.exe` การแพ็กครั้งแรกอาจดาวน์โหลดเครื่องมือของ electron-builder เพิ่มเติม ยังไม่มีใบรับรองสำหรับลงลายเซ็นโปรแกรม
+The output is `release/Lemix-Studio-<version>.exe`. The first packaging run may download extra electron-builder tooling.
 
-## เครื่องมือที่ใช้ได้
+## Quick tour
 
-- **Arrangement:** สูงสุด 24 layers และ 512 คลิป วางหลายไฟล์ใน layer เดียวได้ ลากคลิปข้าม layer, ตัดแบ่งด้วย Razor, trim ทั้งสองขอบ และทำสำเนา/ลบโดยไม่ตัดทับต้นฉบับ พร้อม waveform, snap ที่เปิด/ปิดได้, seek, zoom และ loop
-- **แต่งจังหวะ:** drum machine 16 steps มี kick, snare, hi-hat และ clap กดช่องเพื่อเปิดหรือปิดเสียง
-- **Sound Library:** เครื่องดนตรี 9 แบบ ได้แก่ Drum machine, Analog bass, Electric keys, Ambient pad, Studio piano, Nylon guitar, Wood marimba, Drawbar organ และ Synth lead พร้อมค้นหาและเลื่อนรายการได้
-- **แต่งทำนอง:** note grid สำหรับ bass, keys และเครื่องดนตรีใหม่ทั้ง 5 แบบ โดยแสดง octave ตามเสียงที่เล่นจริง; pad สร้างคอร์ดบรรยากาศให้ แพตเทิร์นซ้ำทุกห้องและ progression เปลี่ยนทุก 2 ห้อง
-- **นำเข้าเสียง:** เลือกไฟล์หรือลาก WAV, MP3, OGG, FLAC และไฟล์เสียงที่ Chromium รองรับลงในแอป ไฟล์ละไม่เกิน 108 MB และยาวไม่เกิน 10 นาที
-- **AI Vocal Remover:** เลือก MDX-Net, ViperX uint8/FP32, Mel-Band RoFormer FP32 หรือ Ensemble ในเครื่อง พร้อมเลือกบริบท 4/8 วินาที บันทึกดนตรีเป็น WAV หรือเพิ่มเป็น layer เพื่อรีมิกซ์ต่อได้ พร้อม progress และ cancel มีตัวเลือกเปิดเว็บไซต์ MVSEP สำหรับ 124 bands และ Ensemble ของบริการ โดยไม่อัปโหลดเพลงจากแอป
-- **Audio Repair:** ลาก Noise Reduction, Click / Pop Repair หรือ Clean Audio ลงบนคลิปเพื่อลดเสียงซ่าและซ่อมคลิก/ช็อตสั้น ๆ ปรับความแรง, Bypass เทียบต้นฉบับ และ Undo ได้ ใช้ทั้งตอนเล่นและส่งออก WAV
-- **Clip tools:** gain และ mute รายคลิป, reverse, playback speed 0.5–2× และปรับเอฟเฟกต์แยกจาก Layer mixer; การเปลี่ยน speed เปลี่ยน pitch ด้วย
-- **มิกซ์เสียง:** volume, stereo pan, mute/solo และมิกเซอร์รวมทุกแทร็ก
-- **ปรับคุณภาพและโทนเสียง:** EQ 3 ย่าน, low-pass filter, drive, compressor, convolution room reverb และ dotted delay พร้อม master limiter
-- **จัดการงาน:** ตั้งชื่อแทร็ก, duplicate/delete, undo/redo 24 ขั้นตอน และเตือนก่อนปิดงานที่ยังไม่ได้บันทึก
-- **บันทึก `.lemix`:** เก็บการตั้งค่า แพตเทิร์น และไฟล์เสียงที่นำเข้าไว้ในโปรเจกต์เดียว ขนาดรวมไม่เกิน 300 MB โดยไทม์ไลน์รองรับเพลงเต็ม ความยาวรวมไม่เกินประมาณ 10 นาที
-- **ส่งออก WAV:** มิกซ์เป็น stereo PCM 16-bit / 44.1 kHz พร้อม effect tail อีก 2 วินาที ใช้สายเอฟเฟกต์เดียวกับที่เล่นสด
+1. Open the app and press **Space** to hear the "Midnight in motion" demo.
+2. Select the drum track and change steps in the Pattern editor, or add an instrument from the Sound Library.
+3. Pick bass, keys, piano, guitar, marimba, organ or lead and click note cells to write a melody — or use **Import** to bring in your own song to remix.
+4. Drag clips on the timeline to arrange them, then shape the sound with EQ / filter / effects in the channel strip on the right.
+5. Open the Mixer to balance the level and stereo position of each track.
+6. Press **Ctrl+S** to save the project and **Export WAV** when you are happy with the sound.
 
-## วิธีลองทำเพลง
-
-1. เปิดโปรแกรมแล้วกด **Space** เพื่อฟังเดโม “Midnight in motion”
-2. เลือกแทร็กกลองและเปลี่ยน steps ใน Pattern editor หรือเพิ่มเครื่องดนตรีจาก Sound library
-3. เลือก bass, keys, piano, guitar, marimba, organ หรือ lead แล้วกดช่องโน้ตเพื่อเขียนทำนอง หรือใช้ **Import** นำเพลงของคุณเข้ามารีมิกซ์
-4. ลากคลิปบนไทม์ไลน์เพื่อจัดตำแหน่ง แล้วปรับ EQ / filter / effects ใน Channel strip ด้านขวา ซึ่งเลื่อนดูเครื่องมือเพิ่มเติมได้
-5. เปิด Mixer เพื่อปรับระดับเสียงและตำแหน่ง stereo ของแต่ละแทร็ก
-6. กด **Ctrl+S** บันทึกโปรเจกต์ และกด **Export WAV** เมื่อพอใจกับเสียงแล้ว
-
-| คีย์ลัด | การทำงาน |
+| Shortcut | Action |
 | --- | --- |
-| Space | เล่น / หยุดชั่วคราว |
-| V | เครื่องมือ Select สำหรับลากคลิป |
-| C | เครื่องมือ Razor กดบนคลิปเพื่อตัดตรงนั้น |
-| S | ตัดคลิปที่เลือกตรง playhead |
-| Ctrl / ⌘ + D | ทำสำเนาคลิปต่อท้าย |
-| Delete / Backspace | ลบเฉพาะคลิปที่เลือก |
-| Ctrl / ⌘ + S | บันทึกโปรเจกต์ |
-| Ctrl / ⌘ + O | เปิดโปรเจกต์ |
+| Space | Play / pause |
+| V | Select tool (drag clips) |
+| C | Razor tool (click a clip to cut it there) |
+| S | Split the selected clip at the playhead |
+| Ctrl / ⌘ + D | Duplicate clip |
+| Delete / Backspace | Delete the selected clip only |
+| Ctrl / ⌘ + S | Save project |
+| Ctrl / ⌘ + O | Open project |
 | Ctrl / ⌘ + Z | Undo |
-| Ctrl / ⌘ + Shift + Z หรือ Ctrl+Y | Redo |
+| Ctrl / ⌘ + Shift + Z or Ctrl+Y | Redo |
 
-Space และ Undo จะไม่แย่งการพิมพ์ข้อความจากช่องกรอกข้อมูล ขณะโฟกัสปุ่ม Space จะสั่งงานปุ่มนั้นตามปกติ
+Space and Undo never steal keystrokes from text inputs. When a button has focus, Space activates that button as usual.
 
-## ตัดต่อคลิปแบบหลาย layers
+## Multi-layer clip editing
 
-1. กด **Add layer** เพื่อสร้าง layer ว่าง หรือนำเข้าไฟล์จากแถบซ้ายเพื่อสร้าง layer พร้อมคลิป
-2. ลากไฟล์เสียงลงบนตำแหน่งใน layer เพื่อแทรกเสียงตรงนั้น หรือเลือก layer แล้วกด **Add audio** เพื่อแทรกตรง playhead
-3. ใช้ **Select (V)** ลากตัวคลิปไปทางซ้าย/ขวาหรือข้าม layer ได้ หากเลื่อนเสียงเลยขอบไทม์ไลน์ โปรแกรมจะขยายความยาวให้ภายในขีดจำกัด
-4. ใช้ **Razor (C)** กดบนจุดที่ต้องการตัด หรือวาง playhead แล้วกด **Split (S)** จะได้คลิปสองชิ้นที่อ้างอิงเสียงต้นฉบับเดียวกัน
-5. ลากขอบซ้าย/ขวาของคลิปเพื่อตัดช่วงต้น/ท้าย และลากกลับเพื่อคืนช่วงเสียงที่ซ่อนไว้ ปิด **SNAP** หากต้องการตัดละเอียดกว่า ¼ beat
-6. เลือกคลิปแล้วปรับ **Clip effects** ด้านขวาเพื่อเปลี่ยน gain, mute, EQ, filter, drive, compressor, reverb หรือ delay เฉพาะชิ้นนั้น ส่วน **Layer mixer** ปรับรวมทุกคลิปใน layer
-7. กด **Ctrl+D** เพื่อทำสำเนาคลิป หรือ **Delete** เพื่อลบคลิป ใช้ Undo/Redo ย้อนการตัด ย้าย trim และเอฟเฟกต์ได้
+1. Click **Add layer** to create an empty layer, or import a file from the sidebar to create a layer with a clip.
+2. Drop an audio file at a position on a layer to insert it there, or select a layer and click **Add audio** to insert at the playhead.
+3. With **Select (V)**, drag clips left/right or across layers. Moving audio past the end of the timeline extends it within the limits.
+4. With **Razor (C)**, click where you want to cut, or place the playhead and press **Split (S)**. Both halves reference the same source audio.
+5. Drag a clip's left/right edge to trim, and drag back to restore hidden audio. Turn off **SNAP** for cuts finer than ¼ beat.
+6. Select a clip and use **Clip effects** to change gain, mute, EQ, filter, drive, compressor, reverb or delay for that clip only. The **Layer mixer** affects every clip on the layer.
+7. **Ctrl+D** duplicates a clip and **Delete** removes it. Undo/Redo covers cuts, moves, trims and effects.
 
-คลิปที่ทับกันใน layer เดียวจะแสดงเป็นแถวซ้อนและเล่นผสมกัน คลิปที่ตัดหรือทำสำเนาใช้ไฟล์ต้นฉบับร่วมกัน จึงไม่เพิ่มสำเนาไฟล์เสียงในโปรเจกต์ แพตเทิร์นกลอง/โน้ตเป็น source ร่วมเช่นกัน การแก้โน้ตจะมีผลกับคลิปที่อ้างอิงแพตเทิร์นชุดนั้น ส่วนเอฟเฟกต์และ gain รายคลิปแยกกัน
+Overlapping clips on the same layer are drawn as stacked rows and mixed together. Split and duplicated clips share the original source, so the project does not store extra copies of the audio. Drum/note patterns are shared sources too: editing notes affects every clip that references that pattern, while per-clip effects and gain stay independent.
 
-โปรแกรมเปิด `.lemix` รูปแบบ v1/v2 เดิมและแปลงเป็นรูปแบบ v3 ให้อัตโนมัติ โดยเก็บเสียง จังหวะเวลา reverse/speed และเอฟเฟกต์เดิมไว้ ไฟล์ที่บันทึกด้วยรุ่นนี้ต้องเปิดด้วย **0.5 ขึ้นไป** เพื่อให้การตั้งค่า Audio Repair ไม่หาย หากยังใช้แอปรุ่นเก่าให้เก็บสำเนาไฟล์เดิมไว้ด้วย
+Older `.lemix` v1/v2 files are opened and upgraded to v3 automatically, preserving audio, timing, reverse/speed and effects. Files saved by the current version need **0.5 or later** to keep Audio Repair settings, so keep a copy of the old file if you still use an older release.
 
-## ลดเสียงซ่าและเสียงคลิก/ช็อต
+## Noise and click repair
 
-1. เปิดแท็บ **Audio FX** ทางซ้าย แล้วเลือก **Noise Reduction**, **Click / Pop Repair** หรือ **Clean Audio** ที่รวมทั้งสองอย่าง
-2. ลากการ์ดเอฟเฟกต์ไปวางบนคลิปที่ต้องการ คลิปจะขึ้นกรอบสีเขียวระหว่างลากและมีป้าย **REPAIR** หลังใส่เอฟเฟกต์ หรือเลือกคลิปแล้วกดการ์ดเอฟเฟกต์เพื่อใช้งานผ่านปุ่ม/คีย์บอร์ดได้
-3. ปรับใน **Clip effects → Audio Repair** ด้านขวา:
-   - **Noise reduction:** ความแรงในการลดเสียงซ่าและเสียงพื้นหลังระดับต่ำ เริ่มประมาณ 30–65% แล้วฟังเทียบ
-   - **Noise floor:** ระดับที่ใช้แยกเสียงพื้นหลัง เริ่มที่ −42 dB หากเพิ่มเป็นค่าที่ติดลบน้อยลงจะกรองมากขึ้น แต่อาจลดเสียงหลักเบา ๆ หรือหางเสียงด้วย
-   - **Click / pop repair:** ความแรงในการซ่อมเสียงกระตุกสั้น ๆ จากการตรวจการเปลี่ยนแปลงของ waveform แล้วประมาณช่วงเสียงทดแทน
-4. กด **Bypass / A–B** เพื่อฟังต้นฉบับสลับกับเสียงที่ผ่านเอฟเฟกต์ ปุ่มถังขยะในส่วน Audio Repair ลบเฉพาะการซ่อมเสียง ส่วน Undo/Redo ย้อนการเพิ่ม ลบ และปรับค่าได้
-5. กด Play หรือ Export WAV เพื่อประมวลผลเสียง การตั้งค่าจะถูกเก็บในโปรเจกต์ และคลิปที่ตัด/ทำสำเนาจะแก้ค่าแยกกันได้
+1. Open the **Audio FX** tab on the left and choose **Noise Reduction**, **Click / Pop Repair** or **Clean Audio** (both combined).
+2. Drag the effect card onto a clip. The clip shows a green outline while dragging and a **REPAIR** badge afterwards. You can also select a clip and click the card (keyboard accessible).
+3. Adjust **Clip effects → Audio Repair** on the right:
+   - **Noise reduction:** how strongly to reduce hiss and low-level background noise. Start around 30–65% and compare.
+   - **Noise floor:** the level used to separate background noise, starting at −42 dB. Less negative values filter more but may also thin quiet parts and tails.
+   - **Click / pop repair:** how strongly to repair short glitches, detected from waveform changes and replaced with an estimated signal.
+4. Use **Bypass / A–B** to compare with the original. The trash button removes only the repair; Undo/Redo covers adding, removing and adjusting it.
+5. Play or Export WAV to process the audio. Settings are saved in the project, and split/duplicated clips can be tuned separately.
 
-เอฟเฟกต์นี้ประมวลผลในเครื่องผ่าน Web Worker และไม่ต้องดาวน์โหลดโมเดลเพิ่ม รองรับ mono/stereo งานเตรียมเสียงก่อนเล่นหยุดได้ด้วย Stop ไฟล์ต้นฉบับและข้อมูลเสียงที่ฝังในโปรเจกต์ไม่ถูกเขียนทับ และ waveform บนไทม์ไลน์ยังแสดงต้นฉบับอยู่
+Processing runs locally in a Web Worker and needs no model download. Mono and stereo are supported, and preparation can be cancelled with Stop. Source files and embedded audio are never overwritten, and the timeline waveform still shows the original.
 
-Noise Reduction ใช้ spectral attenuation ตาม Noise floor ที่ตั้งไว้ ไม่ได้เรียนรู้ noise profile อัตโนมัติ ส่วน Click / Pop Repair เน้นเสียงกระตุกที่สั้นประมาณไม่เกิน 3 ms จึงอาจซ่อมเสียงแตกยาว เสียงลม/เสียงพูดแทรก หรือ clipping รุนแรงไม่ได้ทั้งหมด การกรองแรงเกินไปอาจกระทบรายละเอียดของดนตรี ควรใช้ Bypass เทียบเสมอ ดูความแตกต่างของปัญหาแต่ละแบบได้ใน [คู่มือ Noise Removal & Repair ของ Audacity](https://www.audacityteam.org/manual/effects/noise-removal-and-repair/)
+Noise Reduction uses spectral attenuation based on the chosen noise floor; it does not learn a noise profile automatically. Click / Pop Repair targets glitches shorter than about 3 ms, so it may not fully fix long crackle, wind, overlapping speech or heavy clipping. Over-filtering can remove musical detail — always compare with Bypass. See the [Audacity Noise Removal & Repair manual](https://www.audacityteam.org/manual/effects/noise-removal-and-repair/) for background on each kind of problem.
 
-## เครื่องดนตรีใหม่ในรุ่น 0.4
+## Instruments added in 0.4
 
-| เครื่องดนตรี | ลักษณะเสียง |
+| Instrument | Character |
 | --- | --- |
-| Studio piano | คีย์เปียโนใส พร้อมเสียงที่ค่อย ๆ จาง |
-| Nylon guitar | เสียงดีดนุ่ม โทนอุ่น เล่นในย่านเสียงต่ำกว่าคีย์เปียโน |
-| Wood marimba | เสียงไม้กระทบสั้นและสดใส |
-| Drawbar organ | เสียงออร์แกนยาวที่มีฮาร์โมนิกหลายชั้น |
-| Synth lead | ซินธ์นำโทนสว่างและคม |
+| Studio piano | Clear piano keys with a natural decay |
+| Nylon guitar | Soft, warm plucks in a lower register than the piano |
+| Wood marimba | Short, bright wooden strikes |
+| Drawbar organ | Sustained organ tone with layered harmonics |
+| Synth lead | Bright, sharp lead synth |
 
-กดชื่อเครื่องดนตรีใน **Sound Library** เพื่อเพิ่ม layer พร้อมแพตเทิร์นเริ่มต้น จากนั้นแต่งโน้ตใน **Pattern editor** และปรับ Clip effects / Layer mixer ได้ตามเดิม ช่องค้นหาและตำแหน่งรายการจะคงอยู่เมื่อเพิ่มเสียงหรือแก้ไขโปรเจกต์
+Click an instrument in the **Sound Library** to add a layer with a starter pattern, then edit notes in the **Pattern editor** and adjust Clip effects / Layer mixer as usual. The search box and scroll position are kept when you add sounds or edit the project.
 
-ทั้ง 5 แบบเป็นเสียงสังเคราะห์ในแอป ใช้งานออฟไลน์โดยไม่ต้องติดตั้ง plugin หรือดาวน์โหลด sample เพิ่ม ไม่ใช่ sample บันทึกเครื่องดนตรีจริง เครื่องดนตรีเหล่านี้เริ่มรองรับใน 0.4 ส่วนไฟล์ที่บันทึกด้วยแอปปัจจุบันต้องเปิดด้วย **0.5 ขึ้นไป**
+All five are synthesized in the app and work offline with no plugins or sample downloads — they are not recordings of real instruments.
 
-## ทดสอบ
+## AI vocal removal
+
+1. Import a song and select its track.
+2. Click **Vocal Remover** in the sidebar or **Remove vocals** in the editor.
+3. Pick a **Separation model** from the **Local** group and click **Remove vocals**. Only the selected model is downloaded, and its SHA-256 is verified before use. Internet is needed the first time each model is used (see sizes below).
+4. Watch the progress bar. Press **Cancel separation** or Escape to stop at any time without touching the original.
+5. Choose **Save WAV** to save the full instrumental, or **Add instrumental track** to add a new layer and clip. Only the selected source clip is muted, keeping its offset, trim, length, speed, reverse, gain and effects; other clips on that layer are untouched. Undo restores the previous mix.
+
+Separation uses the full source audio before clip tools and effects. To include effects and other tracks, use the studio's Export WAV instead.
+
+Models are stored in `models/` inside the app's userData folder and work offline once downloaded. Inference runs in an Electron utility process on the CPU and **never uploads your music**. No Python or API key is needed. Mono/stereo songs up to 10 minutes are supported; separation can take several minutes and use a lot of RAM depending on song length.
+
+MDX-Net is limited to 30 minutes per job. RoFormer timeouts scale with song length, context and ensemble size to accommodate slow CPUs — a full song may take hours. Start with a short file; Cancel stops without changing the original.
+
+Separation works on the sound itself, so no language setting is needed. Results depend on the song: some vocals or backing vocals may remain, or some instruments may be affected. Try a short section and compare by ear. There is no measurement yet proving which model is best for every song.
+
+| Local option | Approx. first download | Notes |
+| --- | ---: | --- |
+| MDX-Net Inst HQ 3 | 67 MB | Original engine, lightest on resources |
+| BS-RoFormer ViperX uint8 | 166 MB | Default, smaller thanks to quantization |
+| BS-RoFormer ViperX FP32 | 645 MB | Full-precision weights, separate graph and weight files |
+| Mel-Band RoFormer Kimberley Jensen FP32 | 931 MB | A different architecture to compare |
+| Ensemble · ViperX FP32 + Mel-Band FP32 | 1,576 MB | Reuses the two models above, no extra copies |
+
+**Audio context** for RoFormer: 4 seconds limits RAM, 8 seconds matches the model's original context. Longer context may help some songs but uses a great deal of RAM, especially on 16 GB machines with other apps open. FP32 refers to weight precision and is not guaranteed to sound better on every song; the 4-second variant may lose some detail compared with full context. All options use 50% overlap and subtract the estimated vocals from the original.
+
+The Lemix Ensemble runs ViperX FP32 then Mel-Band FP32 sequentially to bound RAM, then averages the instrumentals 50/50 sample-for-sample. It is not MVSEP's BS/Mel/SCNet ensemble and is not guaranteed to beat a single model.
+
+The **MVSEP · opens website** group lists **BS-RoFormer 124 bands** and **MVSEP Ensemble**. **Open MVSEP website** only opens a fixed web page — it sends no files, asks for no API key and does no server processing from Lemix. Uploading is up to you on their site, under MVSEP's own account terms and pricing. These options are not models that run in the app.
+
+Model sources: both ViperX variants come from the [ONNX conversion by xycld](https://huggingface.co/xycld/BS-RoFormer-ONNX) at a pinned revision; Mel-Band uses the [FP32 ONNX export by santiquiroz](https://github.com/santiquiroz/port-bs-roformer-onnx/releases/tag/models-v1.0) of the [Kimberley Jensen checkpoint](https://github.com/KimberleyJensen/Mel-Band-Roformer-Vocal-Model); MDX-Net uses the [original UVR model](https://github.com/TRvlvr/model_repo/releases/tag/all_public_uvr_models) and [UVR FFT/gain data](https://github.com/TRvlvr/application_data/blob/main/mdx_model_data/model_data.json).
+
+Inference uses [ONNX Runtime](https://github.com/microsoft/onnxruntime/tree/main/js/node). The compressed graphs in `electron-assets/` reference weights from the downloaded, hash-verified files, so large weights are not bundled in the installer. Interrupted downloads resume via HTTP Range up to 5 times, and both size and hash are checked before the destination file is replaced. Graphs can be regenerated with `python scripts/prepare-roformer.py path/to/verified-model.onnx` (append `8` for the 8-second ViperX FP32 graph); this needs `onnx` installed in your development environment only. The STFT and mask conversion follow [MSS_ONNX_TensorRT](https://github.com/ZFTurbo/MSS_ONNX_TensorRT/blob/main/models/preprocess.py) and the Mel-Band export driver.
+
+## Testing
 
 ```powershell
 npm.cmd test
@@ -119,51 +155,11 @@ npm.cmd run typecheck
 npm.cmd run test:electron
 ```
 
-Unit tests ตรวจการย้ายข้อมูลโปรเจกต์เก่า, source/clip references, split/trim/move, clip FX ที่ไม่ใช้ object ร่วมกัน, การวางแถวคลิปซ้อน, mute/solo, WAV และ synthesis ส่วน Electron smoke test ใช้หน้าจอจริงเพื่อตัดคลิป ย้ายข้าม layer ลากขอบทั้งสองข้าง ทำสำเนา/ลบ Undo และปรับ gain/FX รายคลิป แล้วตรวจ PCM ของ WAV ว่าช่วงเสียงและช่วงเงียบตรงกับไทม์ไลน์ รวมถึงตรวจ workflow เดิมและการเปิดไฟล์รุ่นเก่า
+Unit tests cover legacy project migration, source/clip references, split/trim/move, independent clip FX, overlapping clip rows, mute/solo, WAV encoding, synthesis, audio repair DSP, STFT/mask processing and resumable model downloads. The Electron smoke test drives the real UI — cutting clips, moving across layers, trimming both edges, duplicating/deleting, undo, per-clip gain/FX, all nine instruments and drag-on repair — then checks the exported WAV PCM against the timeline. Results and screenshots are written to `artifacts/` (not committed). These tests measure signals in software; they do not verify playback on every speaker or audio device.
 
-เครื่องดนตรีใหม่มีการตรวจเสียงที่ไม่เป็น NaN/Infinity, การจบโน้ต, การปิดแพตเทิร์นให้เงียบ และการบันทึกชนิดเครื่องดนตรี ใน Electron จะค้นหา เพิ่ม และแต่งโน้ตของทั้ง 5 แบบทีละเครื่อง จากนั้น Solo และส่งออก WAV เพื่อยืนยันว่าได้สัญญาณเสียงและแต่ละเครื่องให้ผลลัพธ์ต่างกัน
+After `npm.cmd run dist`, rerun the tests against the packaged `app.asar` with `node scripts/test-electron.mjs --packaged`.
 
-Audio Repair มี unit tests สำหรับการลดเสียงซ่าใต้เสียงหลัก, click/burst repair, stereo phase, bypass ที่ไม่เปลี่ยนข้อมูล, ค่า PCM ที่ผิดรูปแบบ, การแยกค่าของคลิป และการเปิดไฟล์ v2 เดิม ใน Electron จะจำลองการลากเอฟเฟกต์ลงคลิป ส่งออกไฟล์เสียงที่ใส่ hiss/pop ไว้ แล้ววัด noise energy, ระดับเสียงหลัก และ pop peak รวมถึงตรวจว่า Bypass ส่งออกได้เหมือนต้นฉบับ ข้อมูลต้นฉบับยังอยู่ครบ และหยุดการเตรียมเสียงได้ ผลทดสอบอยู่ใน `artifacts/repair-before.wav`, `repair-after.wav` และ `repair-metrics.json` ซึ่งเป็นสัญญาณทดสอบ ไม่ใช่การรับประกันผลกับทุกไฟล์เสียง
-
-Smoke test แสดงหน้าต่างชั่วครู่เพื่อจับภาพก่อนซ่อนหน้าต่าง ผลทดสอบและภาพหน้าจออยู่ใน `artifacts/` ซึ่งไม่ถูก commit การทดสอบวัดสัญญาณเสียงด้วยซอฟต์แวร์ ไม่ได้ยืนยันเสียงผ่านลำโพงหรืออุปกรณ์เสียงทุกแบบ
-
-หลังสร้างแอปด้วย `npm.cmd run dist` สามารถทดสอบซ้ำโดยโหลดโค้ดและ renderer จาก `app.asar` ที่แพ็กแล้วด้วย `node scripts/test-electron.mjs --packaged`
-
-## ตัดเสียงร้องด้วย AI
-
-1. นำเข้าเพลง แล้วเลือกแทร็กเสียงนั้น
-2. กด **Vocal Remover** ในแถบซ้าย หรือ **Remove vocals** ใน editor
-3. เลือก **Separation model** ในกลุ่ม **Local** แล้วกด **Remove vocals** โปรแกรมดาวน์โหลดเฉพาะโมเดลที่เลือกและตรวจ SHA-256 ก่อนใช้ ต้องมีอินเทอร์เน็ตเมื่อดาวน์โหลดครั้งแรกของแต่ละโมเดล รายละเอียดไฟล์และขนาดอยู่ในตารางด้านล่าง
-4. รอแถบความคืบหน้า ระหว่างประมวลผลกด **Cancel separation** หรือ Escape เพื่อยกเลิกได้ โดยไม่เปลี่ยนไฟล์ต้นฉบับ
-5. เลือก **Save WAV** เพื่อบันทึกดนตรีทั้งเพลง หรือ **Add instrumental track** เพื่อเพิ่ม layer พร้อมคลิปใหม่ โปรแกรมจะ mute เฉพาะคลิปต้นฉบับที่เลือก รักษา offset, trim, ความยาว, speed, reverse, gain และเอฟเฟกต์ไว้ โดยไม่ mute คลิปอื่นใน layer เดิม ใช้ Undo กลับสู่มิกซ์ก่อนเพิ่มคลิปได้
-
-การแยกใช้เสียงต้นฉบับเต็มไฟล์ ก่อนผ่าน clip tools และเอฟเฟกต์ ส่วน Save WAV ในเครื่องมือนี้ส่งออก instrumental เต็มไฟล์ หากต้องการรวมเอฟเฟกต์และแทร็กอื่นให้ใช้ Export WAV ของสตูดิโอแทน
-
-โมเดลเก็บใน `models/` ภายใน userData ของแอป หลังดาวน์โหลดแล้วใช้งานออฟไลน์ได้ การประมวลผลอยู่ใน utility process ของ Electron ใช้ CPU และ **ไม่อัปโหลดไฟล์เพลง** ไม่ต้องติดตั้ง Python หรือมี API key รองรับ mono/stereo; เพลงยาวไม่เกิน 10 นาที การแยกอาจใช้เวลาหลายนาทีและใช้ RAM มากตามความยาวเพลง
-
-MDX-Net จำกัดเวลางานละ 30 นาที ส่วน RoFormer เพิ่มเวลาสูงสุดตามความยาวเพลง บริบท และจำนวนโมเดลใน Ensemble เพื่อรองรับ CPU ที่ช้า งานเพลงเต็มอาจใช้เวลาหลายชั่วโมง เริ่มจากไฟล์สั้นก่อน ใช้ Cancel หยุดได้โดยไม่เปลี่ยนต้นฉบับ
-
-โมเดลแยกจากลักษณะเสียง จึงไม่ต้องตั้งค่าภาษา ผลลัพธ์ขึ้นอยู่กับเพลง อาจมีเสียงร้อง/คอรัสเหลือหรือเสียงดนตรีบางส่วนได้รับผลกระทบ ควรลองช่วงสั้น ๆ และฟังเปรียบเทียบ ยังไม่มีผลวัดที่ยืนยันว่าโมเดลใดดีที่สุดสำหรับเพลงไทยทุกเพลง
-
-| ตัวเลือกในเครื่อง | ดาวน์โหลดครั้งแรกโดยประมาณ | หมายเหตุ |
-|---|---:|---|
-| MDX-Net Inst HQ 3 | 67 MB | ตัวเดิม ใช้ทรัพยากรน้อยที่สุด |
-| BS-RoFormer ViperX uint8 | 166 MB | ค่าเริ่มต้น ประหยัดพื้นที่ด้วย quantization |
-| BS-RoFormer ViperX FP32 | 645 MB | น้ำหนักเต็มความละเอียด ใช้ไฟล์กราฟและไฟล์น้ำหนักแยก |
-| Mel-Band RoFormer Kimberley Jensen FP32 | 931 MB | อีกสถาปัตยกรรมสำหรับฟังเทียบ |
-| Ensemble · ViperX FP32 + Mel-Band FP32 | 1,576 MB | ใช้สองตัวข้างบนซ้ำ ไม่ดาวน์โหลดสำเนาใหม่ |
-
-**Audio context** ของ RoFormer เลือก 4 วินาทีเพื่อจำกัด RAM หรือ 8 วินาทีเพื่อใช้บริบทเดิมของโมเดล บริบทที่ยาวขึ้นอาจช่วยบางเพลง แต่ใช้ RAM สูงมาก โดยเฉพาะเครื่องที่มีแรม 16 GB และเปิดโปรแกรมอื่นอยู่ FP32 หมายถึงความละเอียดน้ำหนัก ไม่ได้ยืนยันว่าจะดีกว่าทุกเพลง รุ่น 4 วินาทีอาจเสียรายละเอียดเมื่อเทียบกับบริบทเต็ม ทั้งหมดใช้ overlap 50% และหักเสียงร้องที่ประมาณออกจากต้นฉบับ
-
-Ensemble ของ Lemix ประมวลผล ViperX FP32 แล้วตามด้วย Mel-Band FP32 เพื่อจำกัด RAM ก่อนเฉลี่ย instrumental แบบ 50/50 ที่ตำแหน่ง sample เดียวกัน ไม่ใช่ Ensemble BS/Mel/SCNet ของ MVSEP และไม่ได้รับประกันว่าจะชนะโมเดลเดี่ยว
-
-กลุ่ม **MVSEP · opens website** มี **BS-RoFormer 124 bands** และ **Ensemble ของ MVSEP** ปุ่ม **Open MVSEP website** เปิดเฉพาะหน้าเว็บที่กำหนดไว้ ไม่ส่งไฟล์ ไม่ขอ API key และไม่ประมวลผลผ่านเซิร์ฟเวอร์จาก Lemix หากต้องการใช้งาน ให้เลือกอัปโหลดเองบนเว็บไซต์ เงื่อนไขบัญชีและค่าบริการขึ้นกับ MVSEP ตัวเลือกเหล่านี้ไม่ใช่โมเดลที่รันในแอป
-
-น้ำหนัก ViperX ทั้งสองแบบมาจาก [ONNX conversion โดย xycld](https://huggingface.co/xycld/BS-RoFormer-ONNX) ที่ตรึง revision ไว้ ส่วน Mel-Band ใช้ [FP32 ONNX export โดย santiquiroz](https://github.com/santiquiroz/port-bs-roformer-onnx/releases/tag/models-v1.0) จาก checkpoint ของ [Kimberley Jensen](https://github.com/KimberleyJensen/Mel-Band-Roformer-Vocal-Model) MDX-Net ใช้ [โมเดล UVR เดิม](https://github.com/TRvlvr/model_repo/releases/tag/all_public_uvr_models) และ [ข้อมูล FFT/gain ของ UVR](https://github.com/TRvlvr/application_data/blob/main/mdx_model_data/model_data.json)
-
-ทำงานผ่าน [ONNX Runtime](https://github.com/microsoft/onnxruntime/tree/main/js/node) กราฟที่บีบอัดใน `electron-assets/` อ้างอิงน้ำหนักจากไฟล์ที่ดาวน์โหลดและตรวจ hash แล้ว ไม่รวมน้ำหนักขนาดใหญ่ไว้ในตัวติดตั้ง การดาวน์โหลดที่ขาดกลางทางจะลองต่อด้วย HTTP Range สูงสุด 5 ครั้ง และตรวจทั้งขนาด/แฮชก่อนแทนที่ไฟล์ปลายทาง สร้างกราฟซ้ำได้ด้วย `python scripts/prepare-roformer.py path/to/verified-model.onnx` หรือเพิ่ม `8` ท้ายคำสั่งสำหรับกราฟ FP32 ViperX 8 วินาที โดยติดตั้ง `onnx` เฉพาะสภาพแวดล้อมสำหรับพัฒนา การแปลง STFT และ mask อ้างอิงรูปแบบจาก [MSS_ONNX_TensorRT](https://github.com/ZFTurbo/MSS_ONNX_TensorRT/blob/main/models/preprocess.py) และ driver ของ Mel-Band export
-
-ทดสอบเครื่องมือนี้กับโมเดลจริง:
+Test vocal separation with real models:
 
 ```powershell
 npm.cmd run build
@@ -173,28 +169,45 @@ node scripts/test-electron.mjs --roformer
 node scripts/test-electron.mjs --packaged --roformer
 ```
 
-การทดสอบครั้งแรกจะดาวน์โหลดโมเดลเข้า `artifacts/test-profile/models/` โดยตรวจการแยกจริง, WAV, การรักษาต้นฉบับ/การตั้งค่าคลิป, Undo, cancel และการปฏิเสธ input ที่ผิดรูปแบบ เพิ่ม `--speech` เพื่อดาวน์โหลดเสียงพูดตัวอย่างจาก [PyTorch / VOiCES](https://github.com/pytorch/audio/blob/main/examples/tutorials/audio_feature_augmentation_tutorial.py) และวัดการลดเสียงคนผ่านหลายหน้าต่างประมวลผล ตัวอย่างเสียงเป็น CC BY 4.0 โดย Lab41 / SRI; ไฟล์และผลวัดอยู่ใน `artifacts/speech-*` และไม่ถูกรวมในแอปหรือ commit
+The first run downloads models into `artifacts/test-profile/models/`. Add `--speech` to download a speech sample from [PyTorch / VOiCES](https://github.com/pytorch/audio/blob/main/examples/tutorials/audio_feature_augmentation_tutorial.py) (CC BY 4.0, Lab41 / SRI) and measure voice reduction across several processing windows. Add `--song "C:\path\song.mp3"` to try a local file with ViperX uint8; the output is written to `artifacts/sample-instrumental-bs-roformer.wav`. This verifies the workflow and file integrity, not a quality score.
 
-`--roformer` ตรวจ inference จริงของทุกตัวเลือกในเครื่องด้วยคลิปสั้นและบริบท 4 วินาที รวมถึงตรวจว่า Ensemble เฉลี่ยผลของสมาชิกตรงกัน, การสลับโมเดล/บริบทล้างผลเก่า, การยกเลิก, WAV และปุ่ม MVSEP ที่เปิดเฉพาะเมื่อคลิก (ใช้ browser stub ระหว่างทดสอบ) Unit tests ตรวจ STFT/mask แบบ 4/8 วินาทีและการดาวน์โหลดต่อเมื่อเครือข่ายขาด แต่ยังไม่ได้รันเพลงเต็มด้วยทุกโมเดลหรือ inference จริงแบบ 8 วินาที เพิ่ม `--song "C:\path\song.mp3"` เพื่อทดลองไฟล์ในเครื่องด้วย ViperX uint8 โดยตรวจความยาวครบและไฟล์ต้นฉบับไม่เปลี่ยน ผลอยู่ที่ `artifacts/sample-instrumental-bs-roformer.wav` ซึ่งไม่ถูก commit การตรวจนี้ยืนยัน workflow และไฟล์ ยังไม่ใช่คะแนนคุณภาพเมื่อไม่มี vocal/instrumental ต้นฉบับแยกแทร็ก
-
-## โครงสร้าง
+## Project structure
 
 ```text
-electron/          Main process, native save และ preload bridge ที่จำกัดขอบเขต
-electron/separation*.ts  ดาวน์โหลดโมเดล, worker และ STFT สำหรับ AI Vocal Remover
-electron/roformer-dsp.ts  STFT, complex mask, overlap-add และ vocal subtraction ของ BS-RoFormer
-electron-assets/   กราฟ BS-RoFormer ที่บีบอัด; น้ำหนักโมเดลดาวน์โหลดแยก
-src/model.ts       ชนิดข้อมูล, validation, project defaults และ WAV encoder
-src/timeline.ts    คำนวณช่วงคลิป, split/trim/move และแถวของคลิปที่ทับกัน
-src/synthesis.ts   สร้างเสียงเครื่องดนตรีทั้ง 9 แบบด้วย PCM
-src/cleanup*.ts    DSP ลดเสียงซ่า/คลิกและ worker สำหรับการซ่อมเสียงรายคลิป
-src/audio.ts       Web Audio graph, transport และ offline rendering
-src/main.ts        หน้าจอ, เครื่องมือแต่งเพลง และประวัติ undo/redo
-src/style.css      ธีมสตูดิโอ, layout และ accessibility states
-tests/             Unit tests
-scripts/           Dev launcher และการทดสอบ Electron จริง
+electron/                 Main process, native save dialogs and a narrowly scoped preload bridge
+electron/separation*.ts   Model download, worker and STFT for the AI Vocal Remover
+electron/roformer-dsp.ts  STFT, complex mask, overlap-add and vocal subtraction for BS-RoFormer
+electron/model-download.ts  Resumable, hash-verified model downloads
+electron-assets/          Compressed BS-RoFormer graphs; model weights are downloaded separately
+src/model.ts              Data types, validation, project defaults and WAV encoder
+src/timeline.ts           Clip ranges, split/trim/move and overlapping clip rows
+src/synthesis.ts          PCM synthesis for all 9 instruments
+src/cleanup*.ts           Noise/click repair DSP and its worker
+src/audio.ts              Web Audio graph, transport and offline rendering
+src/main.ts               UI, composition tools and undo/redo history
+src/style.css             Studio theme, layout and accessibility states
+tests/                    Unit tests
+scripts/                  Dev launcher and real Electron tests
 ```
 
-Renderer เปิด `contextIsolation` และ sandbox ปิด Node integration และ remote navigation มี CSP และตรวจข้อมูลก่อนบันทึกผ่าน IPC ตาม [แนวทางความปลอดภัยของ Electron](https://www.electronjs.org/docs/latest/tutorial/security/)
+The renderer runs with `contextIsolation` and sandbox enabled, Node integration and remote navigation disabled, a Content Security Policy, and IPC input validation, following the [Electron security guidelines](https://www.electronjs.org/docs/latest/tutorial/security/).
 
-รุ่นนี้ยังไม่มี crossfade อัตโนมัติ, automation, VST/AU, บันทึกไมโครโฟน, MIDI hardware, time-stretch แบบรักษา pitch หรือแยก stems เป็น drums/bass/guitar แยกกัน และยังไม่มี autosave จึงควรบันทึกโปรเจกต์เป็นระยะ
+## Limitations
+
+There is no automatic crossfade, automation, VST/AU plugin support, microphone recording, MIDI hardware, pitch-preserving time-stretch, or multi-stem separation (drums/bass/guitar) yet. There is also no autosave, so save your project regularly.
+
+## Version history
+
+| Version | Highlights |
+| --- | --- |
+| 0.7.0 | Selectable vocal model library: full-precision BS-RoFormer and Mel-Band RoFormer, local Ensemble, MVSEP shortcuts, resumable verified downloads |
+| 0.6.0 | Local BS-RoFormer model with bounded-memory inference |
+| 0.5.0 | Drag-on noise reduction and click/pop repair |
+| 0.4.0 | Five new synthesized instruments (piano, guitar, marimba, organ, lead) |
+| 0.3.0 | Multi-clip layers and non-destructive clip editing |
+| 0.2.0 | AI vocal remover (MDX-Net) integrated into the studio |
+| 0.1.0 | First release: multitrack synthesis, pattern editor, mixer, effects and WAV export |
+
+## License
+
+[MIT](LICENSE) © 2026 Phattrawut Nachirit
