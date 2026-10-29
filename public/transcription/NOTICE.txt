@@ -1,0 +1,4 @@
+Basic Pitch model and TypeScript library, Copyright 2022 Spotify AB.
+Source: https://github.com/spotify/basic-pitch-ts
+License: Apache License 2.0 (see LICENSE.txt).
+Model weights are included unchanged, from the official model/ directory.

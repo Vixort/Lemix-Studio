@@ -21,7 +21,7 @@ export interface Effects {
 }
 export interface Source {
   id: string; name: string; kind: TrackKind; steps: boolean[][]; notes: number[];
-  audio?: string;
+  audio?: string; chords?: number[][];
 }
 export interface Cleanup { enabled: boolean; noise: number; floor: number; declick: number }
 export const CLEANUP_PRESETS = {
@@ -91,7 +91,8 @@ function validEffects(fx: unknown) {
 function validSource(s: Record<string, unknown>) {
   return uuid(s.id) && name(s.name) && typeof s.kind === 'string' && (s.kind === 'audio' || Object.hasOwn(INSTRUMENTS, s.kind)) &&
     Array.isArray(s.steps) && s.steps.length === 4 && s.steps.every(row => Array.isArray(row) && row.length === 16 && row.every(v => typeof v === 'boolean')) &&
-    Array.isArray(s.notes) && s.notes.length === 16 && s.notes.every(n => numberIn(n, -1, 12) && Number.isInteger(n)) &&
+    Array.isArray(s.notes) && s.notes.length === 16 && s.notes.every(n => numberIn(n, -1, 36) && Number.isInteger(n)) &&
+    (s.chords === undefined || Array.isArray(s.chords) && s.chords.length === 16 && s.chords.every(row => Array.isArray(row) && row.length <= 10 && new Set(row).size === row.length && row.every(n => numberIn(n, 21, 108) && Number.isInteger(n)))) &&
     (s.kind === 'audio' ? typeof s.audio === 'string' && s.audio.length > 0 && s.audio.length % 4 === 0 && s.audio.length <= MAX_AUDIO_BYTES * 4 / 3 && /^[A-Za-z0-9+/]*={0,2}$/.test(s.audio) : s.audio === undefined);
 }
 function validChannel(t: Record<string, unknown>) {
@@ -145,7 +146,7 @@ export const duration = (project: Project) => project.bars * 4 * 60 / project.bp
 export const audible = (tracks: Track[], track: Track) => !track.muted && (!tracks.some(t => t.solo) || track.solo);
 export const cloneClip = (clip: Clip): Clip => ({ ...clip, effects: { ...clip.effects }, ...(clip.cleanup ? { cleanup: { ...clip.cleanup } } : {}) });
 export const cloneProject = (p: Project): Project => ({ ...p,
-  sources: p.sources.map(s => ({ ...s, steps: s.steps.map(row => [...row]), notes: [...s.notes] })),
+  sources: p.sources.map(s => ({ ...s, steps: s.steps.map(row => [...row]), notes: [...s.notes], ...(s.chords ? { chords: s.chords.map(row => [...row]) } : {}) })),
   tracks: p.tracks.map(t => ({ ...t, effects: { ...t.effects }, clips: t.clips.map(cloneClip) })),
 });
 export function pruneSources(p: Project) {

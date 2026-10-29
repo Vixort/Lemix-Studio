@@ -1,6 +1,6 @@
 {
   "name": "lemix-studio",
-  "version": "0.7.0",
+  "version": "0.8.4",
   "description": "An offline music and remix studio built with Electron and TypeScript",
   "author": "Lemix Studio",
   "license": "MIT",
@@ -36,15 +36,21 @@
       "dist/**/*",
       "dist-electron/**/*",
       "electron-assets/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/@tensorflow/**/*",
+      "!node_modules/@spotify/**/*"
     ],
-    "asarUnpack": ["node_modules/onnxruntime-node/**/*"],
+    "asarUnpack": [
+      "node_modules/onnxruntime-node/**/*"
+    ],
     "win": {
       "target": "portable",
       "artifactName": "Lemix-Studio-${version}.exe"
     }
   },
   "dependencies": {
+    "@spotify/basic-pitch": "^1.0.1",
+    "@tensorflow/tfjs": "^3.21.0",
     "fft.js": "^4.0.4",
     "onnxruntime-node": "^1.31.1"
   }

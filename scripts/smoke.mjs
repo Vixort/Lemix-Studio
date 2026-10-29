@@ -4,6 +4,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+app.disableHardwareAcceleration();
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const output = path.join(root, 'artifacts');
 await mkdir(output, { recursive: true });
@@ -14,7 +16,7 @@ const openedWebsites = [];
 shell.openExternal = async url => { openedWebsites.push(url); };
 const testRoformer = process.argv.includes('--roformer');
 const testSeparation = testRoformer || process.argv.includes('--separation') || process.argv.includes('--speech');
-const timeout = setTimeout(() => { console.error('Electron smoke test timed out'); app.exit(1); }, testRoformer ? 20 * 60 * 1000 : testSeparation ? 300000 : 60000);
+const timeout = setTimeout(() => { console.error('Electron smoke test timed out'); app.exit(1); }, testRoformer ? 20 * 60 * 1000 : testSeparation ? 300000 : process.argv.includes('--convert-song') ? 180000 : 60000);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 app.on('browser-window-created', (_event, window) => {
@@ -30,7 +32,7 @@ app.on('browser-window-created', (_event, window) => {
     };
     const count = () => run(`document.querySelectorAll('.track-header').length`);
     const waitFor = async (expression, message) => {
-      for (let i = 0; i < (testRoformer ? 9000 : testSeparation ? 2500 : 150); i++) { if (await run(expression)) return; await sleep(100); }
+      for (let i = 0; i < (testRoformer ? 9000 : testSeparation ? 2500 : process.argv.includes('--convert-song') ? 1200 : 150); i++) { if (await run(expression)) return; await sleep(100); }
       throw new Error(message);
     };
     const control = async (name, value) => run(`{ const el=document.querySelector('[data-control="${name}"]'); el.value=${JSON.stringify(value)}; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }`);
@@ -47,6 +49,64 @@ app.on('browser-window-created', (_event, window) => {
       await writeFile(path.join(output, 'studio.png'), (await window.webContents.capturePage()).toPNG());
       window.hide();
       console.log('PASS: secure Electron window and four rendered demo tracks');
+
+      if (process.argv.includes('--convert-song')) {
+        const songPath = process.argv[process.argv.indexOf('--convert-song') + 1];
+        await run(`{const OriginalWorker=window.Worker;window.Worker=class extends OriginalWorker{constructor(...args){super(...args);this.addEventListener('message',event=>{if(Array.isArray(event.data?.notes))window.__convertedNotes=event.data.notes;});}};void 0;}`);
+        const originalSong = await readFile(songPath), songBase64 = originalSong.toString('base64');
+        await run(`{const file=new File([Uint8Array.from(atob(${JSON.stringify(songBase64)}), c=>c.charCodeAt(0))], 'rat dance2.mp3', {type:'audio/mpeg'});const dt=new DataTransfer();dt.items.add(file);const input=document.querySelector('#audio-file');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}`);
+        await waitFor(`document.querySelectorAll('.track-header').length===5 && !document.body.classList.contains('busy')`, 'Song import failed');
+        await click('[data-action="convert-audio"]');
+        await waitFor(`document.querySelectorAll('.track-header').length===6 && !document.body.classList.contains('busy')`, 'Song conversion failed');
+        await click('[data-action="save"]'); await waitFor(`!document.body.classList.contains('busy')`, 'Converted project save failed');
+        const converted = JSON.parse(await readFile(path.join(output,'test-project.lemix'),'utf8'));
+        assert.equal(converted.tracks[4].clips[0].muted,true);
+        const piano = converted.sources.find(s=>s.id===converted.tracks[5].clips[0].sourceId);
+        const pianoBytes=Buffer.from(piano.audio,'base64');
+        assert.equal(pianoBytes.toString('ascii',0,4),'RIFF');
+        const originalAudio=converted.sources.find(s=>s.id===converted.tracks[4].clips[0].sourceId);
+        const sourceFrames=await run(`(async()=>{const context=new AudioContext({sampleRate:44100});try{return(await context.decodeAudioData(Uint8Array.from(atob(${JSON.stringify(originalAudio.audio)}),c=>c.charCodeAt(0)).buffer)).length;}finally{await context.close();}})()`);
+        assert.equal((pianoBytes.length-44)/2,sourceFrames,'Conversion must preserve the original duration and tempo');
+        let pianoPeak=0; for(let i=44;i<pianoBytes.length;i+=2)pianoPeak=Math.max(pianoPeak,Math.abs(pianoBytes.readInt16LE(i)));
+        assert.ok(pianoPeak>26000 && pianoPeak<30000,'Converted audio should have audible headroom without clipping');
+        await writeFile(path.join(output,'rat-dance-piano-v5-balanced.wav'),pianoBytes);
+        const detectedNotes=await run('window.__convertedNotes');
+        assert.ok(detectedNotes.length>0);
+        await writeFile(path.join(output,'rat-dance-piano-v5-notes.json'),JSON.stringify(detectedNotes,null,2));
+        console.log(`Transcription: ${detectedNotes.length} note events; overlapping notes: ${detectedNotes.some((n,i)=>detectedNotes.slice(0,i).some(p=>p.start+p.duration>n.start))}`);
+        assert.deepEqual(await readFile(songPath),originalSong);
+        await click('[data-action="undo"]'); assert.equal(await count(),5);
+        await run(`document.querySelectorAll('.track-name')[4].click()`);
+        assert.equal(await run(`document.querySelector('#convert-balance').checked`),true);
+        await run(`document.querySelector('#convert-balance').checked=false`);
+        await click('[data-action="convert-audio"]');
+        await waitFor(`document.querySelectorAll('.track-header').length===6 && !document.body.classList.contains('busy')`,'Unbalanced conversion failed');
+        await click('[data-action="save"]'); await waitFor(`!document.body.classList.contains('busy')`,'Unbalanced project save failed');
+        const originalBalance=JSON.parse(await readFile(path.join(output,'test-project.lemix'),'utf8'));
+        const drySource=originalBalance.sources.find(s=>s.id===originalBalance.tracks[5].clips[0].sourceId);
+        const dryWav=Buffer.from(drySource.audio,'base64');
+        assert.equal(dryWav.length,pianoBytes.length);
+        assert.ok(!dryWav.equals(pianoBytes),'Reducing competing notes should change their balance');
+        assert.deepEqual(await run('window.__convertedNotes'),detectedNotes,'Balancing must retain every original note attack');
+        await writeFile(path.join(output,'rat-dance-piano-v5-short-tails.wav'),dryWav);
+        await click('[data-action="undo"]'); assert.equal(await count(),5);
+        await run(`document.querySelectorAll('.track-name')[4].click()`);
+        await click('[data-action="convert-audio"]');
+        await run(`document.querySelector('dialog[open] button').click()`);
+        await waitFor(`!document.body.classList.contains('busy')`,'Conversion cancellation failed');
+        assert.equal(await count(),5);
+        await click('[data-add="piano"]');
+        assert.equal(await run(`document.querySelectorAll('.note-row').length`),88);
+        await click('[data-action="clear-pattern"]');
+        for(const pitch of [0,4,7])await click(`[data-note="${pitch}:0"]`);
+        await click('[data-action="save"]'); await waitFor(`!document.body.classList.contains('busy')`,'Chord save failed');
+        const chordProject=JSON.parse(await readFile(path.join(output,'test-project.lemix'),'utf8'));
+        assert.deepEqual(chordProject.sources.at(-1).chords[0],[60,64,67]);
+        await writeFile(path.join(output,'piano-editor.png'),(await window.webContents.capturePage()).toPNG());
+        assert.equal(errors.length,0,errors.join('\n'));
+        console.log('PASS: supplied song converted to sampled piano, original preserved, undo/cancel and 88-key chords verified');
+        clearTimeout(timeout); app.exit(0); return;
+      }
 
       assert.equal(await run(`document.querySelectorAll('.sound-card').length`),9);
       let previousInstrumentWav;

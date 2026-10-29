@@ -1,4 +1,7 @@
 import './style.css';
+import { noteName, renderInstrument } from './sampler.ts';
+import { balanceNotes } from './melody.ts';
+import { detectMelody } from './conversion.ts';
 import { AudioEngine } from './audio.ts';
 import { COLORS, DRUMS, INSTRUMENTS, CLEANUP_PRESETS, defaultCleanup, MAX_AUDIO_BYTES, MAX_PROJECT_BYTES, createSource, createLayer, createInstrument, createClip, cloneClip, cloneProject, pruneSources, neutralEffects, demoProject, duration, parseProject, maxBars, encodeWav } from './model.ts';
 import type { Clip, Effects, Project, Source, Track, TrackKind } from './model.ts';
@@ -96,6 +99,8 @@ function filterLibrary(query: string) {
 function render() {
   editing = false;
   const t = track();
+  const previousGrid = document.querySelector<HTMLElement>('.note-grid');
+  const noteScroll = previousGrid?.dataset.source === source()?.id ? previousGrid?.scrollTop : undefined;
   const scroll = document.querySelector('.arranger-scroll')?.scrollLeft ?? 0;
   const verticalScroll = document.querySelector('.arranger-viewport')?.scrollTop ?? 0;
   const libraryScroll = document.querySelector('.library')?.scrollTop ?? 0;
@@ -157,16 +162,16 @@ function render() {
   void drawWaves(version).then(() => {
     if (version === revision && reveal) (document.querySelector<HTMLElement>(`[data-clip="${selectedClip}"]`) ?? document.querySelector<HTMLElement>(`[data-lane="${selected}"]`))?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   });
+  const grid = document.querySelector('.note-grid'); if (grid) grid.scrollTop = noteScroll ?? 46 * 24;
 }
 
 function pattern(t?: Track) {
   const content = source();
-  if (!t || !content) return '<div class="editor-empty">Pick a sound from the library. Your first idea starts here.</div>';
-  const headings = `<div class="step-ruler"><span></span>${Array.from({ length: 16 }, (_, i) => `<span>${i % 4 === 0 ? i / 4 + 1 : '·'}</span>`).join('')}</div>`;
-  if (content.kind === 'audio') return `<div class="audio-editor"><span class="audio-editor-icon" style="color:${t.color}">${icon('wave')}</span><div><h3>${esc(t.name)}</h3><p>Give the music its own space. Separate vocals with local AI, or shape your clip with the channel strip.</p><span class="pill">SHARED SOURCE IN PROJECT</span></div><div class="audio-editor-actions"><button class="export-button" data-action="vocal-remover">${icon('spark')} Remove vocals</button><button class="text-button" data-action="import">${icon('plus')} Import another</button></div></div>`;
-  if (content.kind === 'pad') return `<div class="audio-editor"><span class="audio-editor-icon" style="color:${t.color}">${icon('spark')}</span><div><h3>A little atmosphere goes a long way.</h3><p>A slowly evolving minor chord progression. Try a warm low-pass filter and a generous touch of reverb.</p><span class="pill">C m → F m → E♭ m → G m</span></div></div>`;
-  const baseMidi = INSTRUMENTS[content.kind].midi;
-  return `<div class="pattern-content" style="--accent:${t.color}"><div class="pattern-title"><span class="color-dot" style="background:${t.color}"></span><strong>${esc(t.name)}</strong><span>${content.kind === 'drums' ? '16 STEPS · 1/16' : 'C MINOR · 1/16'}</span><button class="text-button" data-action="clear-pattern">Clear pattern</button></div>${headings}${content.kind === 'drums' ? DRUMS.map((name, row) => `<div class="step-row"><span><small>${String(row + 1).padStart(2, '0')}</small>${name}</span>${content.steps[row].map((on, step) => `<button data-step="${row}:${step}" data-column="${step}" class="step ${on ? 'on' : ''} ${step % 4 === 0 ? 'group-start' : ''}" aria-label="${name} step ${step + 1}" aria-pressed="${on}"></button>`).join('')}</div>`).join('') : [12, 10, 7, 5, 3, 2, 0].map(note => `<div class="note-row"><span>${({ 0: 'C', 2: 'D', 3: 'E♭', 5: 'F', 7: 'G', 10: 'B♭', 12: 'C' } as Record<number, string>)[note]}<small>${Math.floor((baseMidi + note) / 12) - 1}</small></span>${content.notes.map((n, step) => `<button data-note="${note}:${step}" data-column="${step}" class="note ${n === note ? 'on' : ''}" aria-label="Note ${note}, step ${step + 1}" aria-pressed="${n === note}"></button>`).join('')}</div>`).join('')}</div>`;
+  if (!t || !content) return '<div class="editor-empty">Select an instrument or import audio.</div>';
+  if (content.kind === 'audio') return `<div class="audio-editor"><div><h3>${esc(t.name)}</h3><p>Convert notes (C2-C7) to an instrument. Competing notes are softened and piano tails shortened to reduce clutter. Dense mixes can still produce wrong or missing notes.</p></div><div class="audio-editor-actions"><label>Instrument <select id="convert-instrument" aria-label="Conversion instrument">${Object.entries(INSTRUMENTS).filter(([k]) => k !== 'drums').sort(([a], [b]) => a === 'piano' ? -1 : b === 'piano' ? 1 : 0).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}</select></label><label><input id="convert-balance" type="checkbox" checked /> Reduce competing notes</label><button data-action="convert-audio" class="export-button">Convert to instrument</button><button data-action="vocal-remover" class="text-button">Remove vocals</button></div></div>`;
+  const headings = `<div class="step-ruler"><span></span>${Array.from({ length: 16 }, (_, i) => `<span>${i + 1}</span>`).join('')}</div>`;
+  const base = INSTRUMENTS[content.kind].midi;
+  return `<div class="pattern-content" style="--accent:${t.color}"><div class="pattern-title"><strong>${esc(t.name)}</strong><span>${content.kind === 'drums' ? '16 STEPS' : '88 KEYS / CLICK TO ADD A CHORD'}</span><button class="text-button" data-action="clear-pattern">Clear pattern</button></div>${headings}<div class="note-grid" data-source="${content.id}">${content.kind === 'drums' ? DRUMS.map((name, row) => `<div class="step-row"><span>${name}</span>${content.steps[row].map((on, step) => `<button data-step="${row}:${step}" data-column="${step}" class="step ${on ? 'on' : ''}" aria-label="${name} step ${step + 1}" aria-pressed="${on}"></button>`).join('')}</div>`).join('') : Array.from({ length: 88 }, (_, i) => 108 - i).map(midi => `<div class="note-row ${[1,3,6,8,10].includes(midi % 12) ? 'black-key' : ''}"><span>${noteName(midi)}</span>${content.notes.map((n, step) => { const on = content.chords ? content.chords[step].includes(midi) : n >= 0 && base + n === midi; return `<button data-note="${midi - base}:${step}" data-column="${step}" class="note ${on ? 'on' : ''}" aria-label="${noteName(midi)}, step ${step + 1}" aria-pressed="${on}"></button>`; }).join('')}</div>`).join('')}</div></div>`;
 }
 
 function mixer() {
@@ -361,6 +366,43 @@ async function addInstrumental() {
   });
 }
 
+async function convertAudio() {
+  const original = source(), originalClip = clip(), originalTrack = track();
+  const kind = document.querySelector<HTMLSelectElement>('#convert-instrument')?.value as keyof typeof INSTRUMENTS;
+  const reduceOverlap = document.querySelector<HTMLInputElement>('#convert-balance')?.checked ?? true;
+  if (!original || original.kind !== 'audio' || !originalClip || !originalTrack || !Object.hasOwn(INSTRUMENTS, kind) || kind === 'drums') return;
+  await task(async () => {
+    if (project.tracks.length >= 24 || project.sources.length >= 128 || clipCount(project) >= 512) throw new Error('Project layer, source or clip limit reached.');
+    engine.stop();
+    const controller = new AbortController(), dialog = document.createElement('dialog');
+    dialog.innerHTML = '<h2>Convert to instrument</h2><p>Transcribing notes on your computer...</p><progress max="100" value="0"></progress><button>Cancel</button>';
+    document.body.append(dialog); dialog.showModal();
+    dialog.querySelector('button')!.onclick = () => controller.abort();
+    dialog.addEventListener('cancel', e => { e.preventDefault(); controller.abort(); });
+    try {
+      const buffer = await engine.buffer(original, project);
+      controller.signal.throwIfAborted();
+      const detected = await detectMelody(buffer, controller.signal, value => { dialog.querySelector('progress')!.value = value; });
+      const notes = reduceOverlap ? balanceNotes(detected) : detected;
+      dialog.querySelector('p')!.textContent = `Rendering ${INSTRUMENTS[kind].name} (${notes.length} notes)...`;
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const rendered = await renderInstrument(kind, notes, buffer.duration, engine.context, controller.signal, 0.03);
+      controller.signal.throwIfAborted();
+      const pcm = rendered.getChannelData(0);
+      let peak = 0; for (const value of pcm) peak = Math.max(peak, Math.abs(value));
+      if (!peak) throw new Error('The converted instrument produced no audio.');
+      for (let i = 0; i < pcm.length; i++) pcm[i] *= 0.85 / peak;
+      const content = createSource('audio'); content.name = `${original.name.slice(0, 48)} (${INSTRUMENTS[kind].name})`; content.audio = base64(encodeWav([rendered.getChannelData(0)], rendered.sampleRate));
+      const layer = { ...originalTrack, id: crypto.randomUUID(), name: content.name, muted: false, effects: { ...originalTrack.effects }, clips: [{ ...cloneClip(originalClip), id: crypto.randomUUID(), sourceId: content.id, name: content.name, muted: false }] };
+      const candidate = { ...project, sources: [...project.sources, content], tracks: [...project.tracks, layer] };
+      if (JSON.stringify(candidate).length > MAX_PROJECT_BYTES) throw new Error('Converted audio would exceed the project size limit.');
+      sourceLengths.set(content.id, buffer.duration);
+      edit(() => { originalClip.muted = true; project.sources.push(content); project.tracks.push(layer); selectClip(layer, layer.clips[0]); }, true);
+      notify(`${notes.length} notes converted. Original clip muted; Undo restores it. Press Play or Export WAV.`);
+    } finally { dialog.close(); dialog.remove(); }
+  });
+}
+
 async function addAudio(files: File[], target = importTarget) {
   importTarget = undefined;
   if (!files.length) return;
@@ -406,7 +448,15 @@ app.addEventListener('click', event => {
     edit(() => { const s = source()!; s.steps[row][step] = !s.steps[row][step]; }, true);
   } else if (element.dataset.note) {
     const [note, step] = element.dataset.note.split(':').map(Number);
-    edit(() => { const s = source()!; s.notes[step] = s.notes[step] === note ? -1 : note; }, true);
+    const content = source(); if (content && content.kind !== 'audio' && content.kind !== 'drums') void engine.audition(content.kind, INSTRUMENTS[content.kind].midi + note).catch(error => notify(error instanceof Error ? error.message : 'Could not preview note.', true));
+    edit(() => {
+      const s = source()!, base = INSTRUMENTS[s.kind as keyof typeof INSTRUMENTS].midi;
+      if (!s.chords) s.chords = s.notes.map(n => n < 0 ? [] : [base + n]);
+      const midi = base + note, row = s.chords[step];
+      if (row.includes(midi)) row.splice(row.indexOf(midi), 1);
+      else if (row.length < 10) row.push(midi);
+      s.notes[step] = row.length ? Math.max(0, Math.min(36, row[0] - base)) : -1;
+    }, true);
   } else if (element.dataset.action) void action(element.dataset.action);
 });
 
@@ -433,6 +483,7 @@ async function action(name: string) {
       edit(() => { c.length = length; t.clips.push(copy); selectClip(t, copy); fitTimeline(); }, true); break;
     }
     case 'insert-audio': if (track()) { importTarget = { trackId: selected, beat: (engine.playing ? engine.position() : cursor) * project.bpm / 60 }; document.querySelector<HTMLInputElement>('#audio-file')!.click(); } break;
+    case 'convert-audio': await convertAudio(); break;
     case 'vocal-remover': openVocalRemover(); break;
     case 'open-mvsep': if (Object.hasOwn(MVSEP_MODELS, selectedSeparationModel)) await task(async () => {
       try { await window.lemix?.openSeparationWebsite(selectedSeparationModel as MvsepModel); }
@@ -484,7 +535,7 @@ async function action(name: string) {
     case 'delete': if (track()) edit(() => { project.tracks = project.tracks.filter(t => t.id !== selected); pruneSources(project); sanitizeSelection(); }, true); break;
     case 'reverse': if (clip()) edit(() => { clip()!.reverse = !clip()!.reverse; }, true); break;
     case 'reset-fx': if (track()) edit(() => { if (inspectorMode === 'clip' && clip()) { clip()!.effects = neutralEffects(); delete clip()!.cleanup; } else track()!.effects = neutralEffects(); }, true); break;
-    case 'clear-pattern': if (source()) edit(() => { source()!.steps.forEach(row => row.fill(false)); source()!.notes.fill(-1); }, true); break;
+    case 'clear-pattern': if (source()) edit(() => { source()!.steps.forEach(row => row.fill(false)); source()!.notes.fill(-1); if (source()!.chords) source()!.chords = Array.from({ length: 16 }, () => []); }, true); break;
     case 'help': document.querySelector<HTMLDialogElement>('#help-dialog')!.showModal(); break;
     case 'close-help': document.querySelector<HTMLDialogElement>('#help-dialog')!.close(); break;
   }

@@ -9,7 +9,8 @@
 - **Arrangement:** up to 24 layers and 512 clips. Place several files on one layer, drag clips across layers, split with the Razor tool, trim both edges, and duplicate or delete non-destructively. Includes waveforms, toggleable snap, seek, zoom and loop.
 - **Beat making:** a 16-step drum machine with kick, snare, hi-hat and clap.
 - **Sound Library:** 9 instruments — Drum machine, Analog bass, Electric keys, Ambient pad, Studio piano, Nylon guitar, Wood marimba, Drawbar organ and Synth lead — with search and a scrollable list.
-- **Melody writing:** a note grid for bass, keys and the five newer instruments, showing the octave that actually plays. The pad builds ambient chords. Patterns repeat every bar and the progression changes every 2 bars.
+- **Melody writing:** an 88-key chromatic editor for all eight melodic instruments, with up to 10 notes per step, note previews and scrollable octaves. Existing patterns retain their progression until edited; new chord patterns use exact pitches.
+- **Instrument conversion (experimental):** transcribe imported audio with the bundled Basic Pitch model, render it with a chosen instrument, and optionally soften competing notes. Progress, cancel and undo are supported.
 - **Audio import:** pick or drag in WAV, MP3, OGG, FLAC or any format Chromium supports (up to 108 MB and 10 minutes per file).
 - **AI Vocal Remover:** choose MDX-Net, BS-RoFormer ViperX (uint8/FP32), Mel-Band RoFormer FP32 or a local Ensemble, with a 4 s or 8 s context window. Save the instrumental as WAV or add it as a new layer to keep remixing. Progress and cancel are supported. Shortcuts open the MVSEP website for its 124-band and Ensemble models without uploading anything from the app.
 - **Audio Repair:** drag Noise Reduction, Click / Pop Repair or Clean Audio onto a clip to reduce hiss and fix short clicks. Adjust strength, A/B with Bypass, and undo. Applied both during playback and WAV export.
@@ -111,7 +112,7 @@ Noise Reduction uses spectral attenuation based on the chosen noise floor; it do
 
 Click an instrument in the **Sound Library** to add a layer with a starter pattern, then edit notes in the **Pattern editor** and adjust Clip effects / Layer mixer as usual. The search box and scroll position are kept when you add sounds or edit the project.
 
-All five are synthesized in the app and work offline with no plugins or sample downloads — they are not recordings of real instruments.
+All nine instruments use bundled FluidR3 GM sample banks, including drums. No runtime downloads are needed. Attribution and the CC BY 3.0 sample license are in `public/sounds/NOTICE.txt`; application code remains MIT licensed.
 
 ## AI vocal removal
 
@@ -155,7 +156,7 @@ npm.cmd run typecheck
 npm.cmd run test:electron
 ```
 
-Unit tests cover legacy project migration, source/clip references, split/trim/move, independent clip FX, overlapping clip rows, mute/solo, WAV encoding, synthesis, audio repair DSP, STFT/mask processing and resumable model downloads. The Electron smoke test drives the real UI — cutting clips, moving across layers, trimming both edges, duplicating/deleting, undo, per-clip gain/FX, all nine instruments and drag-on repair — then checks the exported WAV PCM against the timeline. Results and screenshots are written to `artifacts/` (not committed). These tests measure signals in software; they do not verify playback on every speaker or audio device.
+Unit tests cover legacy project migration, source/clip references, split/trim/move, independent clip FX, overlapping clip rows, mute/solo, WAV encoding, melody transcription, chord validation, audio repair DSP, STFT/mask processing and resumable model downloads. The Electron smoke test drives the real UI — cutting clips, moving across layers, trimming both edges, duplicating/deleting, undo, per-clip gain/FX, all nine instruments and drag-on repair — then checks the exported WAV PCM against the timeline. Results and screenshots are written to `artifacts/` (not committed). These tests measure signals in software; they do not verify playback on every speaker or audio device.
 
 After `npm.cmd run dist`, rerun the tests against the packaged `app.asar` with `node scripts/test-electron.mjs --packaged`.
 
@@ -181,7 +182,9 @@ electron/model-download.ts  Resumable, hash-verified model downloads
 electron-assets/          Compressed BS-RoFormer graphs; model weights are downloaded separately
 src/model.ts              Data types, validation, project defaults and WAV encoder
 src/timeline.ts           Clip ranges, split/trim/move and overlapping clip rows
-src/synthesis.ts          PCM synthesis for all 9 instruments
+src/sampler.ts            Bundled sample playback for all 9 instruments
+src/transcription*.ts     Polyphonic Basic Pitch transcription in a cancellable worker
+src/conversion.ts          Audio conversion worker client
 src/cleanup*.ts           Noise/click repair DSP and its worker
 src/audio.ts              Web Audio graph, transport and offline rendering
 src/main.ts               UI, composition tools and undo/redo history
@@ -192,6 +195,27 @@ scripts/                  Dev launcher and real Electron tests
 
 The renderer runs with `contextIsolation` and sandbox enabled, Node integration and remote navigation disabled, a Content Security Policy, and IPC input validation, following the [Electron security guidelines](https://www.electronjs.org/docs/latest/tutorial/security/).
 
+## Sampled instruments and audio conversion
+
+All nine instruments use bundled FluidR3 GM sample banks, including drums. The melodic editor covers 88 chromatic pitches (A0-C8), with up to 10 notes per step and click-to-preview notes. Scroll vertically to reach other octaves. Existing patterns keep their original progression until edited; new chord patterns use exact pitches. Pad patterns are editable too. These are General MIDI samples; multi-velocity articulation, sustain pedal and editable note lengths are not supported yet.
+
+To convert a song:
+
+1. Import audio and select its clip.
+2. In the Pattern editor, choose an **Instrument** and press **Convert to instrument**.
+3. Leave **Reduce competing notes** checked to soften weaker overlapping notes, or uncheck it to retain the detected balance. Both modes keep the detected pitches, attack times and note lengths.
+4. Cancel during processing if needed. The result is added as a new layer and the original clip is muted. Undo restores the previous project. Solo the new layer to hear it on its own, or use **Export WAV** to render the current mix.
+
+The bundled Spotify Basic Pitch model transcribes candidate notes in the C2-C7 range inside a local CPU worker. Conversion checks adjacent same-pitch events against the source to avoid falsely repeating sustained notes. Shorter instrument release tails reduce clutter, and converted WAVs are normalized to 85% peak. The source duration is preserved; no global slowdown or BPM quantization is applied.
+
+Conversion analyzes the full unprocessed source. The new clip retains the original offset, trim, length, reverse, speed, gain and effects. Results are embedded as WAV in saved projects, so reopening does not repeat inference. Projects using the new chord data need this version for correct playback; older versions ignore those chords.
+
+This feature is an automatic transcription estimate, not instrument separation or a faithful full-song arrangement. Dense mixes, percussion and pitch bends may produce false notes, octave errors and missing sections. Rhythm correction can merge legato rearticulations, and reducing competing notes can soften a genuine quiet part. Start with a clear solo voice or instrument and compare the two balance settings by ear.
+
+Samples are distributed under CC BY 3.0; attribution is in [public/sounds/NOTICE.txt](public/sounds/NOTICE.txt). The Basic Pitch model and library use Apache 2.0; attribution and license are in [public/transcription/](public/transcription/). Application code remains MIT licensed. All samples and transcription weights are bundled; this feature needs no upload or runtime model download.
+
+Developers can regenerate sample banks with `node scripts/prepare-sounds.mjs` (requires internet). The transcription model can be restored from `node_modules/@spotify/basic-pitch/model/` after installing dependencies. After building, run `node scripts/test-electron.mjs --convert-song "C:\path\song.mp3"`, or add `--packaged` to check the packaged app. This tests both balance settings, identical detected notes, source duration, source preservation, undo/cancel and 88-key chord editing; it does not score listening quality.
+
 ## Limitations
 
 There is no automatic crossfade, automation, VST/AU plugin support, microphone recording, MIDI hardware, pitch-preserving time-stretch, or multi-stem separation (drums/bass/guitar) yet. There is also no autosave, so save your project regularly.
@@ -200,6 +224,7 @@ There is no automatic crossfade, automation, VST/AU plugin support, microphone r
 
 | Version | Highlights |
 | --- | --- |
+| 0.8.4 | Bundled sampled instruments, 88-key chord editor, note previews and experimental local audio-to-instrument conversion |
 | 0.7.0 | Selectable vocal model library: full-precision BS-RoFormer and Mel-Band RoFormer, local Ensemble, MVSEP shortcuts, resumable verified downloads |
 | 0.6.0 | Local BS-RoFormer model with bounded-memory inference |
 | 0.5.0 | Drag-on noise reduction and click/pop repair |

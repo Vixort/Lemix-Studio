@@ -67,3 +67,7 @@ main{padding:29px 24px 0;min-width:0;background:radial-gradient(ellipse at 30% 0
 .repair-actions .icon { height: 12px; width: 12px; }
 .vocal-model{display:flex;flex-direction:column;gap:10px;color:#c6bfd5;font-size:11px}.vocal-model select{width:100%;border:1px solid #484155;background:#191820;border-radius:6px;color:#e4ddf3;padding:12px;font:inherit}.vocal-model small{font-size:9px;line-height:1.7;color:#898598}.vocal-model select:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
 .vocal-context{margin-top:16px}#vocal-dialog{max-height:calc(100vh - 40px);overflow-y:auto}.vocal-progress{margin-top:15px}.vocal-result{margin-top:16px}
+
+.note-grid{max-height:270px;overflow-y:auto}.note-row>span{font-size:10px}.note{height:18px}
+
+.note-row.black-key>span{background:#11121a;color:#b4a5d9}.note-row{min-height:24px}.note-grid{scrollbar-gutter:stable}.audio-editor select{max-width:180px;background:#22232e;color:#ddd;padding:7px;border:1px solid #555;border-radius:4px}dialog progress{display:block;width:100%;margin:20px 0}

@@ -1,0 +1,9 @@
+FluidR3 General MIDI samples, rendered to MP3 by the MIDI.js Soundfonts project.
+SoundFont: Frank Wen and the Fluid project; MP3 conversion: gleitz/midi-js-soundfonts contributors.
+Source: https://github.com/gleitz/midi-js-soundfonts/tree/gh-pages/FluidR3_GM
+License: Creative Commons Attribution 3.0 Unported
+https://creativecommons.org/licenses/by/3.0/
+Lemix uses the rendered sample banks without audio modifications; playback applies envelopes, pitch and mixing.
+
+Drum sample conversion: dave4mpls/midi-js-soundfonts-with-drums (FluidR3_GM).
+https://github.com/dave4mpls/midi-js-soundfonts-with-drums

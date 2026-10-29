@@ -1,6 +1,7 @@
 import { audible, duration, encodeWav } from './model.ts';
 import type { Clip, Effects, Project, Source } from './model.ts';
-import { synthesize } from './synthesis.ts';
+import { renderInstrument } from './sampler.ts';
+import { INSTRUMENTS } from './model.ts';
 import { clipDuration } from './timeline.ts';
 import { repairBuffer } from './cleanup-client.ts';
 
@@ -94,9 +95,16 @@ export class AudioEngine {
     this.master.connect(limiter).connect(this.analyser).connect(this.context.destination);
   }
 
+  async audition(kind: Source['kind'], midi: number) {
+    await this.context.resume();
+    const buffer = await renderInstrument(kind, [{ midi, start: 0, duration: 0.65, velocity: 0.65 }], 0.8, this.context);
+    const voice = this.context.createBufferSource(); voice.buffer = buffer;
+    voice.connect(this.master); voice.onended = () => voice.disconnect(); voice.start();
+  }
+
   async buffer(track: Source, project: Project, reverse = false): Promise<AudioBuffer> {
     const key = `${track.id}:${reverse}`;
-    const signature = JSON.stringify(track.kind === 'audio' ? [track.kind, reverse] : [track.kind, project.bpm, project.bars, track.steps, track.notes, reverse]);
+    const signature = JSON.stringify(track.kind === 'audio' ? [track.kind, reverse] : [track.kind, project.bpm, project.bars, track.steps, track.notes, track.chords, reverse]);
     const cached = this.cache.get(key);
     if (cached?.signature === signature && cached.audio === track.audio) return cached.buffer;
     let buffer: AudioBuffer;
@@ -105,10 +113,22 @@ export class AudioEngine {
       const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
       buffer = await this.context.decodeAudioData(bytes.buffer);
       if (buffer.duration > 600) throw new Error('Audio is longer than 10 minutes. Trim it before importing.');
+    } else if (track.kind !== 'audio') {
+      const notes = []; const beat = 60 / project.bpm;
+      for (let bar = 0; bar < project.bars; bar++) {
+        const root = [0, 5, 3, 7][Math.floor(bar / 2) % 4];
+        if (track.kind === 'drums') {
+          for (let step = 0; step < 16; step++) for (let row = 0; row < 4; row++) if (track.steps[row][step]) notes.push({ midi: [36, 38, 42, 39][row], start: (bar * 4 + step / 4) * beat, duration: 0.5, velocity: 0.7 });
+        } else if (track.kind === 'pad' && !track.chords) {
+          for (const note of [0, 3, 7]) notes.push({ midi: 48 + root + note, start: bar * 4 * beat, duration: 4 * beat, velocity: 0.35 });
+        } else for (let step = 0; step < 16; step++) {
+          const pitches = track.chords?.[step] ?? (track.notes[step] < 0 ? [] : [INSTRUMENTS[track.kind].midi + root + track.notes[step]]);
+          for (const midi of pitches) notes.push({ midi, start: (bar * 4 + step / 4) * beat, duration: beat * (track.kind === 'piano' || track.kind === 'guitar' ? 1.5 : 0.8), velocity: 0.65 / Math.sqrt(pitches.length) });
+        }
+      }
+      buffer = await renderInstrument(track.kind, notes, duration(project), this.context);
     } else {
-      const pcm = synthesize(track, project.bpm, project.bars, this.context.sampleRate);
-      buffer = this.context.createBuffer(1, pcm.length, this.context.sampleRate);
-      buffer.copyToChannel(pcm as Float32Array<ArrayBuffer>, 0);
+      throw new Error('Audio source has no embedded audio.');
     }
     if (reverse) for (let ch = 0; ch < buffer.numberOfChannels; ch++) buffer.getChannelData(ch).reverse();
     this.cache.set(key, { signature, audio: track.audio, buffer });
